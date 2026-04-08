@@ -1,0 +1,183 @@
+# WordPress MCP Server
+
+A Model Context Protocol (MCP) server that lets **Codex** and other MCP clients work directly with **WordPress REST APIs**, including strong support for **Elementor-aware workflows**, **input validation**, and **actionable error handling**.
+
+This project is designed for two realities at once:
+
+- generic WordPress installs that expose the standard `wp/v2` API surface
+- real, plugin-heavy production sites where routes, permissions, TLS, and editor behavior are messy
+
+The result is an MCP server that gives agents both:
+
+- broad low-level endpoint coverage generated from live route data
+- higher-level workflow tools for the operations people actually need to complete
+
+---
+
+## Why This Server
+
+Most WordPress automation falls into one of two bad patterns:
+
+- a thin wrapper around raw REST calls with weak validation
+- a highly opinionated site script that breaks outside one environment
+
+This server is meant to sit in the middle:
+
+- **Generated parity layer** for broad WordPress and plugin route coverage
+- **Guarded workflow tools** for posts, media, taxonomy, and Elementor document operations
+- **Strong preflight validation** before writes
+- **Safe-mode mutation gating** with `confirm: true`
+- **Actionable MCP error envelopes** instead of opaque API failures
+
+---
+
+## What You Get
+
+- 501 generated endpoint tools from the current captured live route surface
+- static help and generated tool catalog resources
+- workflow tools for:
+  - post drafting and updating
+  - featured image/media assignment
+  - taxonomy reconciliation
+  - post inspection
+  - Elementor inspection and validation
+  - Elementor revision/autosave inspection
+  - Elementor document diffing
+  - Elementor clone
+  - guarded Elementor restore
+  - guarded Elementor document media import
+  - NexPort-specific publishing conventions
+- live smoke validation script for disposable end-to-end testing
+
+---
+
+## Elementor Support
+
+Elementor is not treated as a magic black box. The server understands the practical signals that matter:
+
+- `_elementor_edit_mode`
+- `_elementor_template_type`
+- `_elementor_data`
+- `_elementor_page_settings`
+- `_elementor_conditions`
+
+It can inspect, validate, diff, clone, restore, and re-import media for Elementor-backed documents without assuming undocumented save behavior is safe.
+
+This project also captures site-specific lessons from live testing:
+
+- application-password auth may work over `https` and fail over plain `http`
+- some environments require explicit insecure-TLS opt-in for test certificates
+- some Elementor routes still return `403` even for admin users
+- deleting Elementor kits can trigger an HTML confirmation flow instead of normal REST JSON
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 20+
+- npm
+- a WordPress account with Application Password support
+- an MCP client such as Codex
+
+### Install locally
+
+```powershell
+git clone https://github.com/dpupek/word-press-mcp.git
+cd word-press-mcp
+npm install
+```
+
+### Run in development
+
+```powershell
+node index.js
+```
+
+### Environment
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `WP_SITE_URL` | yes | Base site URL, for example `https://example.com` |
+| `WP_USERNAME` | yes for authenticated reads/writes | WordPress username |
+| `WP_APP_PASSWORD` | yes for authenticated reads/writes | WordPress Application Password |
+| `WORDPRESS_MCP_SAFE_MODE` | optional | Defaults to enabled; mutating tools require `confirm: true` |
+| `WORDPRESS_MCP_ALLOW_INSECURE_TLS` | optional | Explicit opt-in for self-signed/untrusted test certificates |
+| `WORDPRESS_MCP_ROUTE_CAPTURE_URL` | optional | Route-capture URL used by generator scripts |
+
+### Run the live smoke test
+
+```powershell
+$env:WP_SITE_URL='https://example.com'
+$env:WP_USERNAME='your-user'
+$env:WP_APP_PASSWORD='your-app-password'
+npm run smoke:live
+```
+
+That script creates disposable content, exercises guarded Elementor workflows, and reports cleanup results.
+
+---
+
+## Recommended MCP Setup
+
+For Codex-style `npx` usage:
+
+```toml
+[mcp_servers.wordpress]
+type = "stdio"
+command = "npx"
+args = ["--yes", "-p", "github:dpupek/word-press-mcp", "wordpress-mcp"]
+startup_timeout_sec = 20
+shutdown_timeout_sec = 5
+tool_timeout_sec = 90
+description = "WordPress MCP server with generated endpoint coverage and guarded Elementor workflows"
+
+env = { "WP_SITE_URL" = "https://example.com", "WP_USERNAME" = "your-user", "WP_APP_PASSWORD" = "your-app-password", "WORDPRESS_MCP_SAFE_MODE" = "true" }
+```
+
+If you need the current test-site behavior with an untrusted certificate chain, add:
+
+```toml
+"WORDPRESS_MCP_ALLOW_INSECURE_TLS" = "true"
+```
+
+Use that only for development or test environments.
+
+---
+
+## Project Layout
+
+- [`src/`](src) — runtime, generator, client, workflows, error translation
+- [`scripts/`](scripts) — route capture, generation, parity verification, live smoke
+- [`spec/`](spec) — vendored route/source artifacts
+- [`docs/`](docs) — generated catalog, helper docs, shaping docs
+- [`user-docs/`](user-docs) — quick-start and operator-focused documentation
+- [`test/`](test) — offline AAAA-style tests
+
+---
+
+## User Docs
+
+Start here:
+
+- [Quick Start](user-docs/quick-start.md)
+- [Elementor Workflows](user-docs/elementor-workflows.md)
+- [Live Validation](user-docs/live-validation.md)
+- [Troubleshooting](user-docs/troubleshooting.md)
+
+---
+
+## Validation
+
+```powershell
+npm test
+npm run verify:parity
+npm run smoke:live
+```
+
+---
+
+## License
+
+[MIT](LICENSE)
