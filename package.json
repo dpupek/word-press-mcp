@@ -1,0 +1,23 @@
+{
+  "name": "wordpress-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "wordpress-mcp": "./index.js"
+  },
+  "scripts": {
+    "capture:routes": "node ./scripts/capture-route-index.js",
+    "generate:tools": "node ./scripts/generate-tools.js",
+    "generate:help": "node ./scripts/generate-help.js",
+    "generate": "npm run generate:tools && npm run generate:help",
+    "smoke:live": "node ./scripts/live-smoke.js",
+    "verify:parity": "node ./scripts/verify-spec-parity.js",
+    "pretest": "npm run generate",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.0",
+    "undici": "^7.16.0",
+    "zod": "^3.25.76"
+  }
+}

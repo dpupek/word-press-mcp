@@ -1,0 +1,40 @@
+node_modules/
+
+# Package manager / build
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Coverage / test artifacts
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+logs/
+
+# Environment / local config
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+
+# Temp files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Playwright / browser artifacts
+playwright-report/
+test-results/
+
+# Local generated/runtime files that should not be committed
+*.local.json
