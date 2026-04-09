@@ -90,7 +90,9 @@ When that happens:
 
 - do not retry blindly
 - capture the leftover `elementor_library` ID
-- treat it as a special-case admin cleanup task
+- use `workflow_cleanup_elementor_kit` in `plan` mode first
+- only set `allowForceKitDelete=true` after confirming the target is disposable
+- if the workflow returns a `confirmationUrl`, finish the delete from that browser-admin URL instead of trying more REST retries
 
 ## Browser Pass Shows Frontend Errors
 

@@ -117,6 +117,10 @@ This will:
 - `health`
 - `help`
 - `tool_catalog`
+- `workflow_list_menu_structure`
+- `workflow_upsert_menu_item`
+- `workflow_assign_menu_locations`
+- `workflow_get_post_urls`
 - `workflow_inspect_post`
 - `workflow_taxonomy_reconcile`
 - `workflow_draft_or_update_post`

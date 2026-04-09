@@ -8,22 +8,27 @@ import { loadOperations } from './generator.js';
 import { createLogger } from './logger.js';
 import { createWpClient } from './wp-client.js';
 import { jsonResult } from './utils.js';
-import { loadGeneratedCatalog, loadStaticHelp } from './help.js';
+import { loadAgentBootstrap, loadGeneratedCatalog, loadStaticHelp } from './help.js';
 import { augmentElementorSchema, enrichElementorResponse, maybeApplyElementorOptions } from './elementor.js';
 import {
+  assignMenuLocationsWorkflow,
   cloneElementorDocumentWorkflow,
+  cleanupElementorKitWorkflow,
   draftOrUpdatePostWorkflow,
   diffElementorDocumentsWorkflow,
+  getPostUrlsWorkflow,
   getElementorTemplateConditionsWorkflow,
   inspectElementorHistoryWorkflow,
   inspectPostWorkflow,
   inspectElementorDocumentWorkflow,
   importElementorDocumentMediaWorkflow,
+  listMenuStructureWorkflow,
   listElementorTemplatesWorkflow,
   mediaFeaturedImageWorkflow,
   nexportBlogPostWorkflow,
   restoreElementorCandidateWorkflow,
   taxonomyReconcileWorkflow,
+  upsertMenuItemWorkflow,
   validateElementorDocumentWorkflow,
   validateFilePath,
   validateSlugOrTitleArgs
@@ -70,6 +75,15 @@ export async function startServer() {
   }
 
   mcpServer.resource(
+    'agent_bootstrap',
+    'agent_bootstrap',
+    { description: 'WordPress MCP agent bootstrap guidance', mimeType: 'text/markdown' },
+    async () => ({
+      contents: [{ uri: 'agent_bootstrap', mimeType: 'text/markdown', text: loadAgentBootstrap() }]
+    })
+  );
+
+  mcpServer.resource(
     'help',
     'help',
     { description: 'WordPress MCP help', mimeType: 'text/markdown' },
@@ -87,6 +101,9 @@ export async function startServer() {
     })
   );
 
+  registerTool('agent_bootstrap', 'Return task-oriented bootstrap guidance for agents using this WordPress MCP server.', noopSchema, async () =>
+    jsonResult({ ok: true, markdown: loadAgentBootstrap() })
+  );
   registerTool('help', 'Explain how to configure and use the WordPress MCP tools.', noopSchema, async () =>
     jsonResult({ ok: true, markdown: loadStaticHelp() })
   );
@@ -118,6 +135,52 @@ export async function startServer() {
       });
     });
   }
+
+  registerTool(
+    'workflow_list_menu_structure',
+    'Return a menu, its assigned locations, and a nested tree of menu items.',
+    {
+      menuId: z.number().int()
+    },
+    async (args) => jsonResult(await listMenuStructureWorkflow(client, args))
+  );
+
+  registerTool(
+    'workflow_upsert_menu_item',
+    'Plan or execute a safe create/update flow for a WordPress menu item.',
+    {
+      mode: z.enum(['plan', 'execute']).optional(),
+      menuId: z.number().int(),
+      itemId: z.number().int().optional(),
+      title: z.any().optional(),
+      type: z.enum(['taxonomy', 'post_type', 'post_type_archive', 'custom']).optional(),
+      status: z.enum(['publish', 'future', 'draft', 'pending', 'private']).optional(),
+      parentId: z.number().int().optional(),
+      attrTitle: z.string().optional(),
+      classes: z.array(z.string()).optional(),
+      description: z.string().optional(),
+      menuOrder: z.number().int().optional(),
+      object: z.string().optional(),
+      objectId: z.number().int().optional(),
+      target: z.enum(['_blank', '']).optional(),
+      url: z.string().optional(),
+      xfn: z.array(z.string()).optional(),
+      confirm: z.boolean().optional()
+    },
+    async (args) => jsonResult(await upsertMenuItemWorkflow(client, args))
+  );
+
+  registerTool(
+    'workflow_assign_menu_locations',
+    'Plan or execute assignment of a WordPress menu to one or more menu locations.',
+    {
+      mode: z.enum(['plan', 'execute']).optional(),
+      menuId: z.number().int(),
+      locations: z.array(z.string()),
+      confirm: z.boolean().optional()
+    },
+    async (args) => jsonResult(await assignMenuLocationsWorkflow(client, args))
+  );
 
   registerTool(
     'workflow_draft_or_update_post',
@@ -159,6 +222,16 @@ export async function startServer() {
       tags: z.array(z.string()).optional()
     },
     async (args) => jsonResult(await taxonomyReconcileWorkflow(client, args))
+  );
+
+  registerTool(
+    'workflow_get_post_urls',
+    'Return the public and preview URL candidates for a WordPress post or page.',
+    {
+      postType: z.enum(['posts', 'pages']).default('posts'),
+      postId: z.number().int()
+    },
+    async (args) => jsonResult(await getPostUrlsWorkflow(client, config, args))
   );
 
   registerTool(
@@ -247,6 +320,18 @@ export async function startServer() {
       confirm: z.boolean().optional()
     },
     async (args) => jsonResult(await cloneElementorDocumentWorkflow(client, args))
+  );
+
+  registerTool(
+    'workflow_cleanup_elementor_kit',
+    'Plan or execute a guarded cleanup of an Elementor kit or site-settings record.',
+    {
+      mode: z.enum(['plan', 'execute']).optional(),
+      documentId: z.number().int(),
+      allowForceKitDelete: z.boolean().optional(),
+      confirm: z.boolean().optional()
+    },
+    async (args) => jsonResult(await cleanupElementorKitWorkflow(client, args))
   );
 
   registerTool(

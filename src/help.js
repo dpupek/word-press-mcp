@@ -8,6 +8,19 @@ export function loadStaticHelp() {
   );
 }
 
+export function loadAgentBootstrap() {
+  return readTextIfExists(
+    PATHS.agentBootstrap,
+    [
+      '# WordPress MCP Agent Bootstrap',
+      '',
+      '1. Run `health` first.',
+      '2. Fetch the site identity and current capabilities.',
+      '3. Prefer workflow tools before raw endpoint tools.'
+    ].join('\n')
+  );
+}
+
 export function loadGeneratedCatalog() {
   return readTextIfExists(PATHS.generatedCatalog, '# Generated tool catalog unavailable.\n');
 }

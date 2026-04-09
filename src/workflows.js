@@ -111,6 +111,78 @@ function buildWpGetOperation(postType, route, pathParams) {
   };
 }
 
+function buildTree(items, parentId = 0) {
+  return items
+    .filter((item) => Number(item.parent || 0) === Number(parentId || 0))
+    .sort((left, right) => {
+      const leftOrder = Number(left.menu_order || 0);
+      const rightOrder = Number(right.menu_order || 0);
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+      return Number(left.id || 0) - Number(right.id || 0);
+    })
+    .map((item) => ({
+      id: item.id,
+      title: item.title?.raw || item.title?.rendered || item.title || null,
+      type: item.type || null,
+      object: item.object || null,
+      object_id: item.object_id || null,
+      url: item.url || null,
+      parent: item.parent || 0,
+      menu_order: item.menu_order || 0,
+      target: item.target || null,
+      children: buildTree(items, item.id)
+    }));
+}
+
+function validateMenuItemArgs(args) {
+  const type = args.type || 'custom';
+  if (!args.menuId) {
+    throw {
+      kind: 'validation_error',
+      message: 'menuId is required for menu item workflows.',
+      details: { args }
+    };
+  }
+
+  if (type === 'custom' && !args.url) {
+    throw {
+      kind: 'validation_error',
+      message: 'Custom menu items require a url.',
+      details: { type, actionable: 'Provide url for custom menu items.' }
+    };
+  }
+
+  if (['post_type', 'taxonomy', 'post_type_archive'].includes(type)) {
+    if (!args.object) {
+      throw {
+        kind: 'validation_error',
+        message: `${type} menu items require an object value.`,
+        details: { type, actionable: 'Provide object, for example post, page, or category.' }
+      };
+    }
+    if (type !== 'post_type_archive' && !args.objectId) {
+      throw {
+        kind: 'validation_error',
+        message: `${type} menu items require objectId.`,
+        details: { type, actionable: 'Provide the underlying WordPress object ID.' }
+      };
+    }
+  }
+}
+
+async function listMenuLocations(client) {
+  const operation = {
+    toolName: 'wp_v2_menu_locations_list',
+    route: '/wp/v2/menu-locations',
+    method: 'GET',
+    args: [{ name: 'context', location: 'query' }],
+    pathParams: [],
+    requestStyle: 'query'
+  };
+  const result = await client.execute(operation, { context: 'edit' });
+  return Array.isArray(result.data) ? result.data : [];
+}
+
 async function executeWithEditFallback(client, operation, args) {
   try {
     const result = await client.execute(operation, { ...args, context: 'edit' });
@@ -119,6 +191,60 @@ async function executeWithEditFallback(client, operation, args) {
     const result = await client.execute(operation, { ...args, context: 'view' });
     return { result, contextUsed: 'view' };
   }
+}
+
+function buildPreviewUrl({ siteUrl, postType, document }) {
+  if (!siteUrl || !document?.id) return null;
+  if (typeof document.preview_link === 'string' && document.preview_link.trim()) {
+    return document.preview_link;
+  }
+
+  const url = new URL(siteUrl);
+  if (postType === 'pages' || document?.type === 'page') {
+    url.searchParams.set('page_id', String(document.id));
+  } else {
+    url.searchParams.set('p', String(document.id));
+  }
+  url.searchParams.set('preview', 'true');
+  url.searchParams.set('preview_id', String(document.id));
+
+  if (document?.preview_nonce) {
+    url.searchParams.set('preview_nonce', String(document.preview_nonce));
+  }
+
+  return url.toString();
+}
+
+function buildPostUrlSummary({ siteUrl, postType, document, contextUsed }) {
+  const status = document?.status || null;
+  const publicStatuses = new Set(['publish']);
+  const scheduledStatuses = new Set(['future']);
+  const publicUrl = publicStatuses.has(status) && typeof document?.link === 'string' ? document.link : null;
+  const previewUrl = buildPreviewUrl({ siteUrl, postType, document });
+  const notes = [];
+
+  if (!publicUrl && previewUrl) {
+    notes.push('Preview URLs for unpublished content commonly require an authenticated browser session with sufficient WordPress privileges.');
+  }
+
+  if (scheduledStatuses.has(status) && typeof document?.link === 'string') {
+    notes.push('The public URL is known, but the post is scheduled and may not render publicly until its publish time.');
+  }
+
+  if (contextUsed === 'view') {
+    notes.push('The document had to be loaded with view context, so some edit-only preview fields may be unavailable.');
+  }
+
+  return {
+    apiUrl: null,
+    publicUrl,
+    previewUrl,
+    editContextAvailable: contextUsed === 'edit',
+    isPublished: publicStatuses.has(status),
+    isScheduled: scheduledStatuses.has(status),
+    status,
+    notes
+  };
 }
 
 export async function inspectPostWorkflow(client, args) {
@@ -152,6 +278,230 @@ export async function inspectPostWorkflow(client, args) {
     urls: {
       api: result.requestUrl
     }
+  };
+}
+
+export async function getPostUrlsWorkflow(client, config, args) {
+  const route = `/wp/v2/${args.postType}/(?P<id>[\\d]+)`;
+  const operation = buildWpGetOperation(args.postType, route, ['id']);
+  const { result, contextUsed } = await executeWithEditFallback(client, operation, { id: args.postId });
+  const document = result.data;
+  const urls = buildPostUrlSummary({
+    siteUrl: config.siteUrl,
+    postType: args.postType,
+    document,
+    contextUsed
+  });
+
+  return {
+    ok: true,
+    workflow: 'workflow_get_post_urls',
+    contextUsed,
+    document: {
+      id: document?.id,
+      type: document?.type,
+      status: document?.status,
+      slug: document?.slug,
+      title: document?.title?.raw || document?.title?.rendered || null
+    },
+    urls: {
+      ...urls,
+      apiUrl: result.requestUrl
+    }
+  };
+}
+
+export async function listMenuStructureWorkflow(client, args) {
+  const menuOperation = {
+    toolName: 'wp_v2_menus_id_get',
+    route: '/wp/v2/menus/(?P<id>[\\d]+)',
+    method: 'GET',
+    args: [
+      { name: 'id', location: 'path' },
+      { name: 'context', location: 'query' }
+    ],
+    pathParams: ['id'],
+    requestStyle: 'query'
+  };
+  const menuItemsOperation = {
+    toolName: 'wp_v2_menu_items_list',
+    route: '/wp/v2/menu-items',
+    method: 'GET',
+    args: [
+      { name: 'context', location: 'query' },
+      { name: 'menus', location: 'query' },
+      { name: 'per_page', location: 'query' },
+      { name: 'orderby', location: 'query' },
+      { name: 'order', location: 'query' }
+    ],
+    pathParams: [],
+    requestStyle: 'query'
+  };
+
+  const [menuResult, itemsResult, locations] = await Promise.all([
+    client.execute(menuOperation, { id: args.menuId, context: 'edit' }),
+    client.execute(menuItemsOperation, {
+      context: 'edit',
+      menus: args.menuId,
+      per_page: 100,
+      orderby: 'menu_order',
+      order: 'asc'
+    }),
+    listMenuLocations(client).catch(() => [])
+  ]);
+
+  const items = Array.isArray(itemsResult.data) ? itemsResult.data : [];
+  const menu = menuResult.data || {};
+  const assignedLocations = Array.isArray(menu.locations)
+    ? menu.locations
+    : locations
+        .filter((location) => Number(location?.menu) === Number(args.menuId))
+        .map((location) => location?.name || location?.location || null)
+        .filter(Boolean);
+
+  return {
+    ok: true,
+    workflow: 'workflow_list_menu_structure',
+    menu: {
+      id: menu.id,
+      name: menu.name,
+      slug: menu.slug,
+      description: menu.description || null,
+      locations: assignedLocations,
+      auto_add: menu.auto_add ?? null
+    },
+    items,
+    tree: buildTree(items)
+  };
+}
+
+export async function upsertMenuItemWorkflow(client, args) {
+  const mode = args.mode || 'plan';
+  validateMenuItemArgs(args);
+
+  const steps = [
+    'Validate the target menu and the menu item payload.',
+    'Create a new menu item or update the existing one using the menu-items REST endpoint.',
+    'Reload the menu structure so the caller can verify placement and ordering.'
+  ];
+
+  if (mode === 'plan') {
+    return buildWorkflowPlan('workflow_upsert_menu_item', steps, [
+      args.itemId
+        ? `The workflow will update existing menu item ${args.itemId}.`
+        : 'The workflow will create a new menu item.',
+      `Target menu: ${args.menuId}.`,
+      `Item type: ${args.type || 'custom'}.`
+    ]);
+  }
+
+  requireWorkflowConfirmation('workflow_upsert_menu_item', args);
+
+  const operation = args.itemId
+    ? {
+        toolName: 'wp_v2_menu_items_id_update_post',
+        route: '/wp/v2/menu-items/(?P<id>[\\d]+)',
+        method: 'POST',
+        args: [],
+        pathParams: ['id'],
+        requestStyle: 'json'
+      }
+    : {
+        toolName: 'wp_v2_menu_items_create',
+        route: '/wp/v2/menu-items',
+        method: 'POST',
+        args: [],
+        pathParams: [],
+        requestStyle: 'json'
+      };
+
+  const payload = {
+    ...(args.itemId ? { id: args.itemId } : {}),
+    title: args.title,
+    type: args.type || 'custom',
+    status: args.status || 'publish',
+    parent: args.parentId || 0,
+    attr_title: args.attrTitle,
+    classes: args.classes,
+    description: args.description,
+    menu_order: args.menuOrder,
+    object: args.object,
+    object_id: args.objectId,
+    target: args.target,
+    url: args.url,
+    xfn: args.xfn,
+    menus: args.menuId
+  };
+
+  const result = await client.execute(operation, payload);
+  const structure = await listMenuStructureWorkflow(client, { menuId: args.menuId });
+
+  return {
+    ok: true,
+    mode,
+    workflow: 'workflow_upsert_menu_item',
+    item: result.data,
+    menu: structure.menu,
+    tree: structure.tree
+  };
+}
+
+export async function assignMenuLocationsWorkflow(client, args) {
+  const mode = args.mode || 'plan';
+  const availableLocations = await listMenuLocations(client);
+  const availableNames = availableLocations
+    .map((location) => location?.name || location?.location)
+    .filter(Boolean);
+  const invalidLocations = (args.locations || []).filter((location) => !availableNames.includes(location));
+
+  if (invalidLocations.length > 0) {
+    throw {
+      kind: 'validation_error',
+      message: 'One or more requested menu locations are not available on this site.',
+      details: {
+        invalidLocations,
+        availableLocations: availableNames
+      }
+    };
+  }
+
+  const steps = [
+    'Load the available menu locations for the current site.',
+    'Validate that each requested location exists.',
+    'Update the target menu with the requested locations and return the refreshed menu details.'
+  ];
+
+  if (mode === 'plan') {
+    return {
+      ...buildWorkflowPlan('workflow_assign_menu_locations', steps, [
+        `Target menu: ${args.menuId}.`,
+        `Requested locations: ${(args.locations || []).join(', ') || 'none'}.`
+      ]),
+      availableLocations: availableNames
+    };
+  }
+
+  requireWorkflowConfirmation('workflow_assign_menu_locations', args);
+
+  const operation = {
+    toolName: 'wp_v2_menus_id_update_post',
+    route: '/wp/v2/menus/(?P<id>[\\d]+)',
+    method: 'POST',
+    args: [],
+    pathParams: ['id'],
+    requestStyle: 'json'
+  };
+  const result = await client.execute(operation, {
+    id: args.menuId,
+    locations: args.locations
+  });
+
+  return {
+    ok: true,
+    mode,
+    workflow: 'workflow_assign_menu_locations',
+    menu: result.data,
+    availableLocations: availableNames
   };
 }
 
@@ -620,6 +970,171 @@ export async function importElementorDocumentMediaWorkflow(client, args) {
       elementor: afterInspection.elementor
     }
   };
+}
+
+function isLikelyElementorKitAudit(audit) {
+  return audit?.template_type === 'kit';
+}
+
+function buildElementorLibraryDeleteOperation(includeForceKitDelete = false) {
+  return {
+    toolName: 'wp_v2_elementor_library_id_delete',
+    route: '/wp/v2/elementor_library/(?P<id>[\\d]+)',
+    method: 'DELETE',
+    pathParams: ['id'],
+    requestStyle: 'query',
+    args: [
+      { name: 'id', location: 'path' },
+      { name: 'force', location: 'query' },
+      ...(includeForceKitDelete ? [{ name: 'force_delete_kit', location: 'query' }] : [])
+    ]
+  };
+}
+
+function extractKitConfirmationUrl(error) {
+  const body =
+    typeof error?.responseBody === 'string'
+      ? error.responseBody
+      : typeof error?.responseBody?.message === 'string'
+        ? error.responseBody.message
+        : '';
+  const hrefMatch = body.match(/href="([^"]*force_delete_kit=1[^"]*)"/i);
+  return hrefMatch?.[1]?.replace(/&amp;/g, '&') || null;
+}
+
+export async function cleanupElementorKitWorkflow(client, args) {
+  const mode = args.mode || 'plan';
+  const inspection = await inspectElementorDocumentWorkflow(client, {
+    postType: 'elementor_library',
+    postId: args.documentId
+  });
+  const validation = validateElementorAudit(inspection.elementor);
+  const isLikelyKit = isLikelyElementorKitAudit(inspection.elementor);
+
+  const steps = [
+    'Inspect the Elementor library document and determine whether it looks like a kit/site-settings record.',
+    'Attempt the normal forced WordPress delete path first.',
+    'Only if Elementor demands a site-settings confirmation flow, decide whether to retry with the explicit kit-delete confirmation flag.'
+  ];
+
+  if (mode === 'plan') {
+    return {
+      ...buildWorkflowPlan('workflow_cleanup_elementor_kit', steps, [
+        isLikelyKit
+          ? 'Target looks like an Elementor kit or site-settings record, so the special delete-confirmation path may be required.'
+          : 'Target does not obviously look like a kit, but Elementor may still intercept deletion on this site.',
+        validation.ok
+          ? 'Inspection succeeded and Elementor metadata is readable.'
+          : `Inspection succeeded but Elementor validation reported ${validation.issues.length} issue(s).`
+      ]),
+      target: {
+        documentId: args.documentId,
+        title: inspection.elementor.title,
+        status: inspection.elementor.status,
+        slug: inspection.elementor.slug,
+        templateType: inspection.elementor.template_type
+      },
+      validation,
+      cleanupStrategy: {
+        standardDelete: {
+          force: true
+        },
+        forceKitDeleteAvailable: true,
+        requiresExplicitOptIn: true,
+        likelyNeedsSpecialConfirmation: isLikelyKit
+      }
+    };
+  }
+
+  requireWorkflowConfirmation('workflow_cleanup_elementor_kit', args);
+
+  const standardDeleteOperation = buildElementorLibraryDeleteOperation(false);
+
+  try {
+    const deleteResult = await client.execute(standardDeleteOperation, {
+      id: args.documentId,
+      force: true
+    });
+    return {
+      ok: true,
+      mode,
+      workflow: 'workflow_cleanup_elementor_kit',
+      pathUsed: 'standard_delete',
+      target: {
+        documentId: args.documentId,
+        templateType: inspection.elementor.template_type,
+        title: inspection.elementor.title
+      },
+      validation,
+      deleteResult: deleteResult.data
+    };
+  } catch (error) {
+    const responseText =
+      typeof error?.responseBody === 'string'
+        ? error.responseBody
+        : typeof error?.responseBody?.message === 'string'
+          ? error.responseBody.message
+          : '';
+    const detectionText = `${error?.wpCode || error?.responseBody?.code || ''} ${error?.message || ''} ${responseText} ${error?.snippet || ''}`;
+    const isKitConfirmationError =
+      error?.kind === 'elementor_kit_delete_confirmation' ||
+      /cant_delete_kit|delete your site settings|force_delete_kit/i.test(detectionText);
+
+    if (!isKitConfirmationError) {
+      throw error;
+    }
+
+    if (!args.allowForceKitDelete) {
+      throw {
+        kind: 'validation_error',
+        message:
+          'Elementor intercepted the kit delete request with a confirmation flow. The workflow stopped before taking the special-case delete path.',
+        details: {
+          documentId: args.documentId,
+          templateType: inspection.elementor.template_type,
+          actionable:
+            'Re-run workflow_cleanup_elementor_kit with allowForceKitDelete=true only after confirming this is a disposable Elementor kit or site-settings record.'
+        }
+      };
+    }
+
+    const forcedDeleteOperation = buildElementorLibraryDeleteOperation(true);
+    let forcedDeleteResult;
+    try {
+      forcedDeleteResult = await client.execute(forcedDeleteOperation, {
+        id: args.documentId,
+        force: true,
+        force_delete_kit: 1
+      });
+    } catch (forcedDeleteError) {
+      throw {
+        kind: 'validation_error',
+        message:
+          'Elementor still blocked kit cleanup after the explicit `force_delete_kit` retry. This site appears to require a browser-admin confirmation flow instead of a pure REST delete.',
+        details: {
+          documentId: args.documentId,
+          templateType: inspection.elementor.template_type,
+          confirmationUrl: extractKitConfirmationUrl(forcedDeleteError),
+          actionable:
+            'Open the Elementor admin confirmation URL in a browser session with appropriate privileges, complete the site-settings delete confirmation there, and treat this record as a manual cleanup item.'
+        }
+      };
+    }
+
+    return {
+      ok: true,
+      mode,
+      workflow: 'workflow_cleanup_elementor_kit',
+      pathUsed: 'force_delete_kit',
+      target: {
+        documentId: args.documentId,
+        templateType: inspection.elementor.template_type,
+        title: inspection.elementor.title
+      },
+      validation,
+      deleteResult: forcedDeleteResult.data
+    };
+  }
 }
 
 export async function draftOrUpdatePostWorkflow(client, args) {

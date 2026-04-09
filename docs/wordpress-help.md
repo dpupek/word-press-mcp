@@ -3,20 +3,22 @@
 ## Setup
 - Configure `WP_SITE_URL` to the target site root, for example `https://example.com`.
 - Set `WP_USERNAME` and `WP_APP_PASSWORD` when you need authenticated reads or any writes.
-- Leave `WORDPRESS_MCP_ALLOW_INSECURE_TLS` unset by default. Set it to `true` only for development or test sites that use a self-signed or otherwise untrusted TLS certificate.
 - `WORDPRESS_MCP_SAFE_MODE` defaults to enabled. Mutating tools require `confirm: true` while safe mode is on.
 - `WORDPRESS_MCP_ROUTE_CAPTURE_URL` defaults to `https://test.nexportsolutions.com/wp-json` for route capture and parity generation.
 
 ## Best Practices
+- Start with `agent_bootstrap` when first connecting to an unfamiliar site.
 - Prefer workflow tools when the task spans multiple API calls or involves taxonomy/media coordination.
 - Use generated endpoint tools when you need low-level control over a specific route.
+- Use `workflow_get_post_urls` when you need a deterministic public URL or the best available preview URL candidate for a post or page.
+- Use `workflow_list_menu_structure`, `workflow_upsert_menu_item`, and `workflow_assign_menu_locations` for classic WordPress menu operations instead of assembling menu/menu-item requests by hand.
 - Keep writes explicit. Validate categories, tags, and media assets before touching posts.
-- Treat unexpected HTML responses as environment issues first: wrong URL, login page, reverse proxy, or plugin error page.
+- Treat unexpected HTML responses as a normalized server-side failure mode and follow the actionable guidance returned by the MCP tool response.
 
 ## Error Handling
-- Authentication failures usually mean missing or wrong application-password credentials, or insufficient role capabilities.
-- 400-level validation failures usually mean bad enum values, invalid taxonomy IDs, or unsupported field names.
-- 404 failures usually mean the route is not registered on the site, or the target object ID/slug does not exist.
+- Follow the normalized actionable response returned by the MCP server.
+- Validation errors indicate the request was blocked before any write occurred.
+- Authentication and permission issues are surfaced as actionable tool errors without requiring the agent to reason about transport details.
 
 ## NexPort Layer
 - Default NexPort blog workflows to `draft` status unless asked to publish.
@@ -31,6 +33,7 @@
 - Use `workflow_list_elementor_templates` and `workflow_get_elementor_template_conditions` to inspect theme-builder templates and assignments without mutating them.
 - Use `workflow_inspect_elementor_history` to inspect revisions and autosaves with the same Elementor audit logic.
 - Use `workflow_clone_elementor_document` to copy a known-good Elementor document into a new draft without inventing new builder JSON from scratch.
+- Use `workflow_cleanup_elementor_kit` to handle Elementor kit or site-settings cleanup with an explicit opt-in before attempting the `force_delete_kit` path.
 - Use `workflow_diff_elementor_documents` to compare a live document against another document, revision, or autosave before deciding whether a rollback or clone is safe.
 - Use `workflow_restore_elementor_candidate` to evaluate a revision or autosave, preserve the live document's status, and only restore when the candidate passes Elementor validation.
 - Use `workflow_import_elementor_document_media` to run Elementor's document media-import endpoint only after the target document passes a preflight Elementor validation check.
@@ -48,7 +51,5 @@
 - Prefer cloning a known-good Elementor document over generating builder JSON from scratch.
 - `context=edit` is required for the most useful Elementor metadata, but lower-privilege accounts may force a fallback to `context=view`, which means workflows must tolerate partial insight.
 - Elementor document media import is a document-scoped remap/import operation keyed by document ID, not a general file-upload substitute.
-- On `https://test.nexportsolutions.com`, the `test` account authenticates successfully as an administrator with an application password. Over plain `http`, the same auth flow returns `rest_not_logged_in`, so live validation and route capture should use `https`.
-- The same test site currently presents a self-signed or untrusted TLS chain to Node-based clients. Use `WORDPRESS_MCP_ALLOW_INSECURE_TLS=true` only for that environment if you need live validation before the certificate chain is fixed.
 - Even with valid administrator auth, `elementor/v1/post` currently returns `403` on this site, so Elementor workflows should continue preferring the guarded WordPress-core and site-editor routes unless a specific Elementor endpoint has been validated.
-- Deleting an `elementor_library` kit can return an Elementor HTML confirmation page instead of REST JSON. Treat kit deletion as a special-case admin operation rather than a normal API delete until a safe endpoint is validated.
+- Deleting an `elementor_library` kit can return an Elementor HTML confirmation page instead of REST JSON. Use `workflow_cleanup_elementor_kit` so the standard delete path is attempted first and the `force_delete_kit` retry path is only taken with explicit opt-in. On some sites, Elementor still requires the browser-admin confirmation URL even after that retry.

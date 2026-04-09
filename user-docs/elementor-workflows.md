@@ -28,6 +28,7 @@ Use these first:
 Use these only after inspection and validation:
 
 - `workflow_clone_elementor_document`
+- `workflow_cleanup_elementor_kit`
 - `workflow_restore_elementor_candidate`
 - `workflow_import_elementor_document_media`
 
@@ -39,7 +40,8 @@ Use these only after inspection and validation:
 4. Diff the live document against the candidate revision/autosave.
 5. Restore the candidate if rollback is the goal.
 6. Clone when you want a safe draft copy.
-7. Import document media only after validation passes.
+7. Use guarded kit cleanup for disposable Elementor kit/site-settings records.
+8. Import document media only after validation passes.
 
 ## Practical Lessons
 
@@ -47,6 +49,8 @@ Use these only after inspection and validation:
 - Route presence does not guarantee route usability.
 - Some Elementor endpoints still reject admin users on the live site.
 - Elementor kit deletion is not a normal REST delete on the current test site.
+- The guarded cleanup workflow attempts the normal delete first and only takes the `force_delete_kit` path when you explicitly allow it.
+- Some sites still require the browser-admin confirmation URL after the guarded retry, so cleanup can end as a documented manual admin step rather than a silent failure.
 
 ## What To Avoid
 
