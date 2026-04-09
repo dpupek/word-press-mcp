@@ -13,6 +13,7 @@ import { augmentElementorSchema, enrichElementorResponse, maybeApplyElementorOpt
 import {
   assignMenuLocationsWorkflow,
   cloneElementorDocumentWorkflow,
+  cloneMenuWorkflow,
   cleanupElementorKitWorkflow,
   draftOrUpdatePostWorkflow,
   diffElementorDocumentsWorkflow,
@@ -26,6 +27,7 @@ import {
   listElementorTemplatesWorkflow,
   mediaFeaturedImageWorkflow,
   nexportBlogPostWorkflow,
+  reorderMenuItemsWorkflow,
   restoreElementorCandidateWorkflow,
   taxonomyReconcileWorkflow,
   upsertMenuItemWorkflow,
@@ -180,6 +182,58 @@ export async function startServer() {
       confirm: z.boolean().optional()
     },
     async (args) => jsonResult(await assignMenuLocationsWorkflow(client, args))
+  );
+
+  registerTool(
+    'workflow_reorder_menu_items',
+    'Plan or execute a safe reordering and parent-move flow for WordPress menu items.',
+    {
+      mode: z.enum(['plan', 'execute']).optional(),
+      menuId: z.number().int(),
+      items: z
+        .array(
+          z.object({
+            itemId: z.number().int(),
+            parentId: z.number().int().optional(),
+            menuOrder: z.number().int().optional()
+          })
+        )
+        .optional(),
+      tree: z
+        .array(
+          z.object({
+            itemId: z.number().int(),
+            menuOrder: z.number().int().optional(),
+            children: z
+              .array(
+                z.object({
+                  itemId: z.number().int(),
+                  menuOrder: z.number().int().optional(),
+                  children: z.array(z.any()).optional()
+                })
+              )
+              .optional()
+          })
+        )
+        .optional(),
+      confirm: z.boolean().optional()
+    },
+    async (args) => jsonResult(await reorderMenuItemsWorkflow(client, args))
+  );
+
+  registerTool(
+    'workflow_clone_menu',
+    'Plan or execute a safe clone of a classic WordPress menu, its items, and optional location assignments.',
+    {
+      mode: z.enum(['plan', 'execute']).optional(),
+      sourceMenuId: z.number().int(),
+      targetName: z.string().optional(),
+      targetSlug: z.string().optional(),
+      description: z.string().optional(),
+      cloneLocations: z.boolean().optional(),
+      confirm: z.boolean().optional()
+    },
+    async (args) => jsonResult(await cloneMenuWorkflow(client, args))
   );
 
   registerTool(

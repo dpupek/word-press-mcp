@@ -27,6 +27,8 @@ const lines = [
   '- `workflow_list_menu_structure`',
   '- `workflow_upsert_menu_item`',
   '- `workflow_assign_menu_locations`',
+  '- `workflow_reorder_menu_items`',
+  '- `workflow_clone_menu`',
   '- `workflow_get_post_urls`',
   '- `workflow_inspect_post`',
   '- `workflow_inspect_elementor_document`',

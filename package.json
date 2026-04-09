@@ -25,6 +25,7 @@
     "prepare": "npm run build",
     "smoke:package": "node ./scripts/smoke-package-install.js",
     "smoke:live": "node ./scripts/live-smoke.js",
+    "smoke:live:menus": "node ./scripts/live-menu-smoke.js",
     "verify:parity": "node ./scripts/verify-spec-parity.js",
     "pretest": "npm run generate",
     "test": "node --test"

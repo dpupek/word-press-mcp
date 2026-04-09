@@ -11,7 +11,8 @@
 - Prefer workflow tools when the task spans multiple API calls or involves taxonomy/media coordination.
 - Use generated endpoint tools when you need low-level control over a specific route.
 - Use `workflow_get_post_urls` when you need a deterministic public URL or the best available preview URL candidate for a post or page.
-- Use `workflow_list_menu_structure`, `workflow_upsert_menu_item`, and `workflow_assign_menu_locations` for classic WordPress menu operations instead of assembling menu/menu-item requests by hand.
+- Use `workflow_list_menu_structure`, `workflow_upsert_menu_item`, `workflow_reorder_menu_items`, `workflow_clone_menu`, and `workflow_assign_menu_locations` for classic WordPress menu operations instead of assembling menu/menu-item requests by hand.
+- Use `npm run smoke:live:menus` when you need a disposable live proof that the classic menu workflows still work against the current site.
 - Keep writes explicit. Validate categories, tags, and media assets before touching posts.
 - Treat unexpected HTML responses as a normalized server-side failure mode and follow the actionable guidance returned by the MCP tool response.
 

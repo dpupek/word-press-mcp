@@ -4,6 +4,7 @@ import {
   assignMenuLocationsWorkflow,
   cleanupElementorKitWorkflow,
   cloneElementorDocumentWorkflow,
+  cloneMenuWorkflow,
   draftOrUpdatePostWorkflow,
   diffElementorDocumentsWorkflow,
   getPostUrlsWorkflow,
@@ -11,6 +12,7 @@ import {
   inspectElementorHistoryWorkflow,
   listMenuStructureWorkflow,
   nexportBlogPostWorkflow,
+  reorderMenuItemsWorkflow,
   restoreElementorCandidateWorkflow,
   upsertMenuItemWorkflow,
   validateElementorDocumentWorkflow
@@ -50,7 +52,21 @@ const fakeConfig = {
 };
 
 const fakeMenuClient = {
+  nextCreatedMenuItemId: 200,
   async execute(operation, payload) {
+    if (operation.toolName === 'wp_v2_menus_create') {
+      return {
+        data: {
+          id: 27,
+          name: payload.name,
+          slug: payload.slug || 'main-menu-copy',
+          description: payload.description || null,
+          locations: [],
+          auto_add: false
+        }
+      };
+    }
+
     if (operation.toolName === 'wp_v2_menu_locations_list') {
       return {
         data: [
@@ -105,9 +121,12 @@ const fakeMenuClient = {
     }
 
     if (operation.toolName === 'wp_v2_menu_items_create' || operation.toolName === 'wp_v2_menu_items_id_update_post') {
+      if (operation.toolName === 'wp_v2_menu_items_create') {
+        this.nextCreatedMenuItemId += 1;
+      }
       return {
         data: {
-          id: payload.id || 201,
+          id: payload.id || this.nextCreatedMenuItemId,
           title: payload.title,
           type: payload.type,
           menus: payload.menus,
@@ -296,6 +315,110 @@ test('assignMenuLocationsWorkflow: updates menu locations in execute mode', asyn
   // Assert
   assert.equal(result.workflow, 'workflow_assign_menu_locations');
   assert.deepEqual(result.menu.locations, ['primary', 'footer']);
+});
+
+test('reorderMenuItemsWorkflow: returns a plan for changed menu ordering', async () => {
+  // Arrange
+  const args = {
+    mode: 'plan',
+    menuId: 7,
+    items: [
+      { itemId: 101, menuOrder: 1, parentId: 0 },
+      { itemId: 103, menuOrder: 2, parentId: 0 },
+      { itemId: 102, menuOrder: 3, parentId: 0 }
+    ]
+  };
+
+  // Assert (initial)
+  assert.equal(args.mode, 'plan');
+
+  // Act
+  const result = await reorderMenuItemsWorkflow(fakeMenuClient, args);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_reorder_menu_items');
+  assert.equal(result.mode, 'plan');
+  assert.equal(result.changes.length, 2);
+});
+
+test('reorderMenuItemsWorkflow: executes parent and order changes', async () => {
+  // Arrange
+  const calls = [];
+  const trackingClient = {
+    async execute(operation, payload) {
+      calls.push({ operation: operation.toolName, payload });
+      return fakeMenuClient.execute(operation, payload);
+    }
+  };
+  const args = {
+    mode: 'execute',
+    confirm: true,
+    menuId: 7,
+    tree: [
+      {
+        itemId: 101,
+        children: []
+      },
+      {
+        itemId: 102,
+        children: []
+      },
+      {
+        itemId: 103,
+        children: []
+      }
+    ]
+  };
+
+  // Assert (initial)
+  assert.equal(args.confirm, true);
+
+  // Act
+  const result = await reorderMenuItemsWorkflow(trackingClient, args);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_reorder_menu_items');
+  assert.ok(result.updatedItems.length >= 1);
+  assert.ok(calls.some((call) => call.operation === 'wp_v2_menu_items_id_update_post'));
+});
+
+test('cloneMenuWorkflow: returns a plan before mutation', async () => {
+  // Arrange
+  const args = { mode: 'plan', sourceMenuId: 7, targetName: 'Cloned Menu' };
+
+  // Assert (initial)
+  assert.equal(args.sourceMenuId, 7);
+
+  // Act
+  const result = await cloneMenuWorkflow(fakeMenuClient, args);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_clone_menu');
+  assert.equal(result.mode, 'plan');
+  assert.ok(result.steps.length >= 3);
+});
+
+test('cloneMenuWorkflow: clones menu items and locations in execute mode', async () => {
+  // Arrange
+  const args = {
+    mode: 'execute',
+    confirm: true,
+    sourceMenuId: 7,
+    targetName: 'Cloned Menu',
+    cloneLocations: true
+  };
+
+  // Assert (initial)
+  assert.equal(args.cloneLocations, true);
+
+  // Act
+  const result = await cloneMenuWorkflow(fakeMenuClient, args);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_clone_menu');
+  assert.equal(result.targetMenu.id, 27);
+  assert.equal(result.clonedItems.length, 3);
+  assert.ok(Array.isArray(result.clonedLocations));
 });
 
 test('nexportBlogPostWorkflow: applies safe NexPort defaults', async () => {

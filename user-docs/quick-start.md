@@ -112,6 +112,21 @@ This will:
 - delete disposable posts
 - report if Elementor blocks template-kit cleanup
 
+To validate the classic menu workflows against a live site:
+
+```powershell
+npm run smoke:live:menus
+```
+
+This will:
+
+- create a disposable classic menu
+- add disposable custom menu items
+- reorder the menu into a parent/child structure
+- clone the menu
+- report available menu locations in plan mode
+- delete both disposable menus
+
 ## First Workflow Tools To Use
 
 - `health`
@@ -120,6 +135,8 @@ This will:
 - `workflow_list_menu_structure`
 - `workflow_upsert_menu_item`
 - `workflow_assign_menu_locations`
+- `workflow_reorder_menu_items`
+- `workflow_clone_menu`
 - `workflow_get_post_urls`
 - `workflow_inspect_post`
 - `workflow_taxonomy_reconcile`

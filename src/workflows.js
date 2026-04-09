@@ -375,6 +375,150 @@ export async function listMenuStructureWorkflow(client, args) {
   };
 }
 
+function mapMenuItemMutationPayload(item, menuId, overrides = {}) {
+  return {
+    title: item.title?.raw || item.title?.rendered || item.title || null,
+    type: item.type || 'custom',
+    status: item.status || 'publish',
+    parent: Number(item.parent || 0),
+    attr_title: item.attr_title || null,
+    classes: item.classes || [],
+    description: item.description || null,
+    menu_order: Number(item.menu_order || 0),
+    object: item.object || null,
+    object_id: item.object_id || null,
+    target: item.target || null,
+    url: item.url || null,
+    xfn: item.xfn || [],
+    menus: menuId,
+    ...overrides
+  };
+}
+
+function flattenTreeNodes(nodes, parentId = 0, rows = []) {
+  for (const node of nodes || []) {
+    rows.push({
+      itemId: node.itemId,
+      parentId,
+      menuOrder: Number(node.menuOrder || 0)
+    });
+    flattenTreeNodes(node.children || [], node.itemId, rows);
+  }
+  return rows;
+}
+
+function normalizeMenuTreeInput(nodes, parentId = 0) {
+  if (!Array.isArray(nodes)) {
+    throw {
+      kind: 'validation_error',
+      message: 'tree must be an array of menu nodes.',
+      details: { providedType: typeof nodes }
+    };
+  }
+
+  return nodes.map((node, index) => {
+    const itemId = Number(node?.itemId);
+    if (!Number.isInteger(itemId) || itemId <= 0) {
+      throw {
+        kind: 'validation_error',
+        message: 'Every tree node requires a numeric itemId.',
+        details: { node }
+      };
+    }
+
+    return {
+      itemId,
+      parentId,
+      menuOrder: Number.isInteger(Number(node?.menuOrder)) ? Number(node.menuOrder) : index + 1,
+      children: normalizeMenuTreeInput(node?.children || [], itemId)
+    };
+  });
+}
+
+function buildReorderPlanNotes(structure, changes) {
+  const notes = [`Target menu: ${structure.menu.id} (${structure.menu.name}).`, `Items affected: ${changes.length}.`];
+  if (changes.some((change) => change.parentChanged)) {
+    notes.push('One or more items will move to a different parent.');
+  }
+  if (changes.some((change) => change.orderChanged)) {
+    notes.push('One or more items will receive a new menu_order value.');
+  }
+  return notes;
+}
+
+function deriveMenuReorderChanges(items, args) {
+  const currentById = new Map(items.map((item) => [Number(item.id), item]));
+
+  let desiredEntries;
+  if (Array.isArray(args.tree) && args.tree.length > 0) {
+    const normalizedTree = normalizeMenuTreeInput(args.tree);
+    desiredEntries = flattenTreeNodes(normalizedTree);
+  } else if (Array.isArray(args.items) && args.items.length > 0) {
+    desiredEntries = args.items.map((entry, index) => {
+      const itemId = Number(entry?.itemId);
+      if (!Number.isInteger(itemId) || itemId <= 0) {
+        throw {
+          kind: 'validation_error',
+          message: 'Each reorder item requires a numeric itemId.',
+          details: { entry }
+        };
+      }
+
+      return {
+        itemId,
+        parentId: Number(entry?.parentId || 0),
+        menuOrder: Number.isInteger(Number(entry?.menuOrder)) ? Number(entry.menuOrder) : index + 1
+      };
+    });
+  } else {
+    throw {
+      kind: 'validation_error',
+      message: 'Provide either items or tree to describe the desired menu structure.',
+      details: { providedKeys: Object.keys(args || {}) }
+    };
+  }
+
+  const desiredIds = new Set(desiredEntries.map((entry) => entry.itemId));
+  const missingItems = desiredEntries.filter((entry) => !currentById.has(entry.itemId)).map((entry) => entry.itemId);
+  if (missingItems.length > 0) {
+    throw {
+      kind: 'validation_error',
+      message: 'One or more requested menu items do not belong to the target menu.',
+      details: { missingItems }
+    };
+  }
+
+  const omittedItems = items.map((item) => Number(item.id)).filter((id) => !desiredIds.has(id));
+  if (omittedItems.length > 0) {
+    throw {
+      kind: 'validation_error',
+      message: 'The requested menu structure omitted existing menu items.',
+      details: {
+        omittedItems,
+        actionable: 'Provide a complete menu structure so the workflow does not accidentally drop items.'
+      }
+    };
+  }
+
+  return desiredEntries
+    .map((entry) => {
+      const current = currentById.get(entry.itemId);
+      const currentParent = Number(current?.parent || 0);
+      const currentOrder = Number(current?.menu_order || 0);
+      return {
+        itemId: entry.itemId,
+        title: current?.title?.raw || current?.title?.rendered || current?.title || null,
+        fromParentId: currentParent,
+        toParentId: Number(entry.parentId || 0),
+        fromMenuOrder: currentOrder,
+        toMenuOrder: Number(entry.menuOrder || 0),
+        parentChanged: currentParent !== Number(entry.parentId || 0),
+        orderChanged: currentOrder !== Number(entry.menuOrder || 0)
+      };
+    })
+    .filter((change) => change.parentChanged || change.orderChanged);
+}
+
 export async function upsertMenuItemWorkflow(client, args) {
   const mode = args.mode || 'plan';
   validateMenuItemArgs(args);
@@ -397,12 +541,30 @@ export async function upsertMenuItemWorkflow(client, args) {
 
   requireWorkflowConfirmation('workflow_upsert_menu_item', args);
 
+  const menuItemMutationArgs = [
+    { name: 'id', location: 'path' },
+    { name: 'title', location: 'body' },
+    { name: 'type', location: 'body' },
+    { name: 'status', location: 'body' },
+    { name: 'parent', location: 'body' },
+    { name: 'attr_title', location: 'body' },
+    { name: 'classes', location: 'body' },
+    { name: 'description', location: 'body' },
+    { name: 'menu_order', location: 'body' },
+    { name: 'object', location: 'body' },
+    { name: 'object_id', location: 'body' },
+    { name: 'target', location: 'body' },
+    { name: 'url', location: 'body' },
+    { name: 'xfn', location: 'body' },
+    { name: 'menus', location: 'body' }
+  ];
+
   const operation = args.itemId
     ? {
         toolName: 'wp_v2_menu_items_id_update_post',
         route: '/wp/v2/menu-items/(?P<id>[\\d]+)',
         method: 'POST',
-        args: [],
+        args: menuItemMutationArgs,
         pathParams: ['id'],
         requestStyle: 'json'
       }
@@ -410,7 +572,7 @@ export async function upsertMenuItemWorkflow(client, args) {
         toolName: 'wp_v2_menu_items_create',
         route: '/wp/v2/menu-items',
         method: 'POST',
-        args: [],
+        args: menuItemMutationArgs.filter((arg) => arg.name !== 'id'),
         pathParams: [],
         requestStyle: 'json'
       };
@@ -443,6 +605,78 @@ export async function upsertMenuItemWorkflow(client, args) {
     item: result.data,
     menu: structure.menu,
     tree: structure.tree
+  };
+}
+
+export async function reorderMenuItemsWorkflow(client, args) {
+  const mode = args.mode || 'plan';
+  const structure = await listMenuStructureWorkflow(client, { menuId: args.menuId });
+  const changes = deriveMenuReorderChanges(structure.items, args);
+
+  const steps = [
+    'Load the current menu structure and validate that the requested item set is complete.',
+    'Compute parent and menu_order changes for the affected items only.',
+    'Update the changed menu items and return the refreshed menu tree.'
+  ];
+
+  if (mode === 'plan') {
+    return {
+      ...buildWorkflowPlan('workflow_reorder_menu_items', steps, buildReorderPlanNotes(structure, changes)),
+      changes
+    };
+  }
+
+  requireWorkflowConfirmation('workflow_reorder_menu_items', args);
+
+  const updateOperation = {
+    toolName: 'wp_v2_menu_items_id_update_post',
+    route: '/wp/v2/menu-items/(?P<id>[\\d]+)',
+    method: 'POST',
+    args: [
+      { name: 'id', location: 'path' },
+      { name: 'title', location: 'body' },
+      { name: 'type', location: 'body' },
+      { name: 'status', location: 'body' },
+      { name: 'parent', location: 'body' },
+      { name: 'attr_title', location: 'body' },
+      { name: 'classes', location: 'body' },
+      { name: 'description', location: 'body' },
+      { name: 'menu_order', location: 'body' },
+      { name: 'object', location: 'body' },
+      { name: 'object_id', location: 'body' },
+      { name: 'target', location: 'body' },
+      { name: 'url', location: 'body' },
+      { name: 'xfn', location: 'body' },
+      { name: 'menus', location: 'body' }
+    ],
+    pathParams: ['id'],
+    requestStyle: 'json'
+  };
+
+  const itemsById = new Map(structure.items.map((item) => [Number(item.id), item]));
+  const updatedItems = [];
+  for (const change of changes) {
+    const current = itemsById.get(change.itemId);
+    const result = await client.execute(
+      updateOperation,
+      mapMenuItemMutationPayload(current, args.menuId, {
+        id: change.itemId,
+        parent: change.toParentId,
+        menu_order: change.toMenuOrder
+      })
+    );
+    updatedItems.push(result.data);
+  }
+
+  const refreshed = await listMenuStructureWorkflow(client, { menuId: args.menuId });
+  return {
+    ok: true,
+    mode,
+    workflow: 'workflow_reorder_menu_items',
+    menu: refreshed.menu,
+    changes,
+    updatedItems,
+    tree: refreshed.tree
   };
 }
 
@@ -487,7 +721,10 @@ export async function assignMenuLocationsWorkflow(client, args) {
     toolName: 'wp_v2_menus_id_update_post',
     route: '/wp/v2/menus/(?P<id>[\\d]+)',
     method: 'POST',
-    args: [],
+    args: [
+      { name: 'id', location: 'path' },
+      { name: 'locations', location: 'body' }
+    ],
     pathParams: ['id'],
     requestStyle: 'json'
   };
@@ -502,6 +739,131 @@ export async function assignMenuLocationsWorkflow(client, args) {
     workflow: 'workflow_assign_menu_locations',
     menu: result.data,
     availableLocations: availableNames
+  };
+}
+
+export async function cloneMenuWorkflow(client, args) {
+  const mode = args.mode || 'plan';
+  const source = await listMenuStructureWorkflow(client, { menuId: args.sourceMenuId });
+  const notes = [
+    `Source menu: ${source.menu.id} (${source.menu.name}).`,
+    `Source item count: ${source.items.length}.`,
+    `Target name: ${args.targetName || `${source.menu.name} Copy`}.`
+  ];
+  const steps = [
+    'Load the source menu structure, locations, and ordered menu items.',
+    'Create the new menu shell without locations so the clone stays isolated.',
+    'Recreate each menu item in parent-safe order and optionally assign locations after validation.'
+  ];
+
+  if (mode === 'plan') {
+    return buildWorkflowPlan('workflow_clone_menu', steps, notes);
+  }
+
+  requireWorkflowConfirmation('workflow_clone_menu', args);
+
+  const createMenuOperation = {
+    toolName: 'wp_v2_menus_create',
+    route: '/wp/v2/menus',
+    method: 'POST',
+    args: [
+      { name: 'name', location: 'body' },
+      { name: 'slug', location: 'body' },
+      { name: 'description', location: 'body' }
+    ],
+    pathParams: [],
+    requestStyle: 'json'
+  };
+  const menuResult = await client.execute(createMenuOperation, {
+    name: args.targetName || `${source.menu.name} Copy`,
+    slug: args.targetSlug,
+    description: args.description ?? source.menu.description ?? undefined
+  });
+  const targetMenuId = menuResult.data?.id;
+  const createdItems = [];
+  const clonedIdMap = new Map();
+
+  const orderedItems = [...source.items].sort((left, right) => {
+    const leftParent = Number(left.parent || 0);
+    const rightParent = Number(right.parent || 0);
+    if (leftParent === 0 && rightParent !== 0) return -1;
+    if (leftParent !== 0 && rightParent === 0) return 1;
+    const leftOrder = Number(left.menu_order || 0);
+    const rightOrder = Number(right.menu_order || 0);
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return Number(left.id || 0) - Number(right.id || 0);
+  });
+
+  const createItemOperation = {
+    toolName: 'wp_v2_menu_items_create',
+    route: '/wp/v2/menu-items',
+    method: 'POST',
+    args: [
+      { name: 'title', location: 'body' },
+      { name: 'type', location: 'body' },
+      { name: 'status', location: 'body' },
+      { name: 'parent', location: 'body' },
+      { name: 'attr_title', location: 'body' },
+      { name: 'classes', location: 'body' },
+      { name: 'description', location: 'body' },
+      { name: 'menu_order', location: 'body' },
+      { name: 'object', location: 'body' },
+      { name: 'object_id', location: 'body' },
+      { name: 'target', location: 'body' },
+      { name: 'url', location: 'body' },
+      { name: 'xfn', location: 'body' },
+      { name: 'menus', location: 'body' }
+    ],
+    pathParams: [],
+    requestStyle: 'json'
+  };
+
+  for (const item of orderedItems) {
+    const parentId = Number(item.parent || 0);
+    const cloneParent = parentId === 0 ? 0 : clonedIdMap.get(parentId);
+    if (parentId !== 0 && !cloneParent) {
+      throw {
+        kind: 'validation_error',
+        message: 'Unable to clone menu items because a parent item was not recreated first.',
+        details: { itemId: item.id, parentId }
+      };
+    }
+
+    const result = await client.execute(
+      createItemOperation,
+      mapMenuItemMutationPayload(item, targetMenuId, {
+        parent: cloneParent || 0
+      })
+    );
+    clonedIdMap.set(Number(item.id), result.data?.id);
+    createdItems.push({
+      sourceItemId: item.id,
+      clonedItemId: result.data?.id,
+      title: item.title?.raw || item.title?.rendered || item.title || null
+    });
+  }
+
+  let assignedLocations = [];
+  if (args.cloneLocations === true && Array.isArray(source.menu.locations) && source.menu.locations.length > 0) {
+    const locationResult = await assignMenuLocationsWorkflow(client, {
+      mode: 'execute',
+      confirm: true,
+      menuId: targetMenuId,
+      locations: source.menu.locations
+    });
+    assignedLocations = locationResult.menu?.locations || source.menu.locations;
+  }
+
+  const target = await listMenuStructureWorkflow(client, { menuId: targetMenuId });
+  return {
+    ok: true,
+    mode,
+    workflow: 'workflow_clone_menu',
+    sourceMenu: source.menu,
+    targetMenu: target.menu,
+    clonedItems: createdItems,
+    clonedLocations: assignedLocations,
+    tree: target.tree
   };
 }
 
