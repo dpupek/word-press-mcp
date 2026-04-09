@@ -1,9 +1,32 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Agent, request } from 'undici';
+import { Agent, request as undiciRequest } from 'undici';
 import { hasAuth } from './config.js';
 import { routePatternToConcretePath } from './generator.js';
 import { sanitizeForLog, splitArgs } from './utils.js';
+
+const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const RETRYABLE_NETWORK_CODES = new Set([
+  'ECONNABORTED',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETDOWN',
+  'ENETRESET',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET'
+]);
+const TLS_ERROR_CODES = new Set([
+  'CERT_HAS_EXPIRED',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE'
+]);
 
 function authHeader(config) {
   const pair = `${config.username}:${config.appPassword}`;
@@ -28,17 +51,51 @@ function isHtmlResponse(headers) {
   return typeof contentType === 'string' && contentType.includes('text/html');
 }
 
-async function parseResponse(response, operation) {
+function safeSnippet(value) {
+  return typeof value === 'string' ? value.slice(0, 400) : '';
+}
+
+function extractErrorCode(error) {
+  return error?.code || error?.cause?.code || error?.socket?.code || '';
+}
+
+function buildHttpsVariant(url) {
+  const next = new URL(url);
+  if (next.protocol !== 'http:') return null;
+  next.protocol = 'https:';
+  return next.toString();
+}
+
+function shouldRetryWithHttps(config, error, url) {
+  if (!hasAuth(config)) return false;
+  if (!url.startsWith('http://')) return false;
+
+  const wpCode = error?.wpCode || error?.responseBody?.code || '';
+  const message = error?.responseBody?.message || error?.message || '';
+  const snippet = error?.snippet || '';
+  const combined = `${wpCode} ${message} ${snippet}`.toLowerCase();
+
+  return error?.statusCode === 401 && /rest_not_logged_in|application password|authorization/i.test(combined);
+}
+
+function shouldRetryTransient(error, safeToRetry) {
+  if (!safeToRetry) return false;
+  if (error?.kind === 'network_error') return true;
+  return RETRYABLE_STATUS_CODES.has(error?.statusCode);
+}
+
+async function parseResponse(response, operation, requestUrl) {
   const contentType = response.headers['content-type'] || '';
   const text = await response.body.text();
   if (isHtmlResponse(response.headers)) {
     throw {
       kind: 'unexpected_html',
       message: `Unexpected HTML response from ${operation.method} ${operation.route}.`,
-      snippet: text.slice(0, 400),
+      snippet: safeSnippet(text),
       statusCode: response.statusCode,
       route: operation.route,
-      method: operation.method
+      method: operation.method,
+      requestUrl
     };
   }
   if (!text.trim()) {
@@ -54,9 +111,56 @@ async function parseResponse(response, operation) {
   }
 }
 
-export function createWpClient(config, logger) {
+function normalizeHttpError(operation, requestUrl, statusCode, responseBody) {
+  const wpCode = responseBody?.code;
+  const message = responseBody?.message || `WordPress request failed with status ${statusCode}.`;
+  let kind = 'unexpected_error';
+
+  if (statusCode === 400) kind = 'bad_request';
+  else if (statusCode === 401) kind = 'auth_error';
+  else if (statusCode === 403) kind = 'permission_error';
+  else if (statusCode === 404) kind = 'not_found';
+  else if (RETRYABLE_STATUS_CODES.has(statusCode)) kind = 'transient_http_error';
+  else if (statusCode >= 500) kind = 'server_error';
+
+  return {
+    kind,
+    message,
+    statusCode,
+    responseBody,
+    wpCode,
+    route: operation.route,
+    method: operation.method,
+    requestUrl
+  };
+}
+
+function normalizeTransportError(error, operation, requestUrl) {
+  if (error?.route && error?.method) {
+    return {
+      ...error,
+      requestUrl: error.requestUrl || requestUrl
+    };
+  }
+
+  const code = extractErrorCode(error);
+  const kind = TLS_ERROR_CODES.has(code) ? 'tls_error' : 'network_error';
+
+  return {
+    kind,
+    message: error?.message || 'WordPress request failed before the server returned a response.',
+    route: operation.route,
+    method: operation.method,
+    requestUrl,
+    code
+  };
+}
+
+export function createWpClient(config, logger, transport = {}) {
+  const requestImpl = transport.request || undiciRequest;
+  const AgentCtor = transport.Agent || Agent;
   const dispatcher = config.allowInsecureTls
-    ? new Agent({
+    ? new AgentCtor({
         connect: {
           rejectUnauthorized: false
         }
@@ -65,6 +169,81 @@ export function createWpClient(config, logger) {
 
   function requestOptions(overrides = {}) {
     return dispatcher ? { ...overrides, dispatcher } : overrides;
+  }
+
+  function buildHeaders(includeAuth = true) {
+    const headers = {
+      'User-Agent': config.userAgent,
+      Accept: 'application/json'
+    };
+
+    if (includeAuth && hasAuth(config)) {
+      headers.Authorization = authHeader(config);
+    }
+
+    return headers;
+  }
+
+  async function performJsonRequest(operation, requestUrl, requestInit, options = {}) {
+    const { safeToRetry = false, allowHttpsUpgrade = false } = options;
+    const attempts = [];
+    let currentUrl = requestUrl;
+
+    while (true) {
+      const attemptNumber = attempts.length + 1;
+      logger.debug(
+        'wordpress request',
+        sanitizeForLog({
+          url: currentUrl,
+          method: operation.method,
+          attempt: attemptNumber
+        })
+      );
+
+      try {
+        const response = await requestImpl(currentUrl, requestOptions(requestInit));
+        const parsed = await parseResponse(response, operation, currentUrl);
+
+        if (response.statusCode >= 400) {
+          throw normalizeHttpError(operation, currentUrl, response.statusCode, parsed.data);
+        }
+
+        return {
+          statusCode: response.statusCode,
+          headers: parsed.headers,
+          data: parsed.data,
+          route: operation.route,
+          requestUrl: currentUrl,
+          attempts: attemptNumber
+        };
+      } catch (error) {
+        const normalized = normalizeTransportError(error, operation, currentUrl);
+        attempts.push({
+          attempt: attemptNumber,
+          requestUrl: currentUrl,
+          kind: normalized.kind,
+          statusCode: normalized.statusCode || null,
+          code: normalized.code || null
+        });
+
+        if (allowHttpsUpgrade && shouldRetryWithHttps(config, normalized, currentUrl)) {
+          const httpsUrl = buildHttpsVariant(currentUrl);
+          if (httpsUrl && httpsUrl !== currentUrl) {
+            currentUrl = httpsUrl;
+            continue;
+          }
+        }
+
+        if (attempts.length === 1 && shouldRetryTransient(normalized, safeToRetry)) {
+          continue;
+        }
+
+        throw {
+          ...normalized,
+          attempts
+        };
+      }
+    }
   }
 
   async function execute(operation, args) {
@@ -76,19 +255,10 @@ export function createWpClient(config, logger) {
       Object.entries(picked).filter(([key]) => key !== 'confirm' && !pathParamNames.has(key))
     );
 
-    const headers = {
-      'User-Agent': config.userAgent,
-      Accept: 'application/json'
-    };
-
-    if (hasAuth(config)) {
-      headers.Authorization = authHeader(config);
-    }
-
     let url = `${config.siteUrl}/wp-json${concretePath}`;
     const requestInit = {
       method: operation.method,
-      headers
+      headers: buildHeaders(true)
     };
 
     if (operation.requestStyle === 'query') {
@@ -107,57 +277,57 @@ export function createWpClient(config, logger) {
       requestInit.headers['Content-Type'] = 'application/json';
     }
 
-    logger.debug('wordpress request', sanitizeForLog({ url, method: operation.method, payloadEntries }));
-
-    const response = await request(url, requestOptions(requestInit));
-    const parsed = await parseResponse(response, operation);
-
-    if (response.statusCode >= 400) {
-      throw {
-        statusCode: response.statusCode,
-        responseBody: parsed.data,
-        route: operation.route,
-        method: operation.method
-      };
-    }
+    const result = await performJsonRequest(operation, url, requestInit, {
+      safeToRetry: !operation.mutation,
+      allowHttpsUpgrade: true
+    });
 
     return {
-      statusCode: response.statusCode,
-      headers: parsed.headers,
-      data: parsed.data,
-      route: concretePath,
-      requestUrl: url
+      ...result,
+      route: concretePath
     };
   }
 
   async function healthCheck() {
-    const base = `${config.siteUrl}/wp-json`;
-    const indexResponse = await request(base, requestOptions({
-      method: 'GET',
-      headers: { Accept: 'application/json', 'User-Agent': config.userAgent }
-    }));
-    const routeIndex = await parseResponse(indexResponse, { method: 'GET', route: '/' });
+    const routeIndex = await performJsonRequest(
+      { method: 'GET', route: '/' },
+      `${config.siteUrl}/wp-json`,
+      {
+        method: 'GET',
+        headers: buildHeaders(false)
+      },
+      {
+        safeToRetry: true,
+        allowHttpsUpgrade: false
+      }
+    );
+
     let auth = null;
     if (hasAuth(config)) {
       try {
-        const authResponse = await request(`${config.siteUrl}/wp-json/wp/v2/users/me?context=edit`, requestOptions({
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            'User-Agent': config.userAgent,
-            Authorization: authHeader(config)
+        const authResponse = await performJsonRequest(
+          { method: 'GET', route: '/wp/v2/users/me' },
+          `${config.siteUrl}/wp-json/wp/v2/users/me?context=edit`,
+          {
+            method: 'GET',
+            headers: buildHeaders(true)
+          },
+          {
+            safeToRetry: true,
+            allowHttpsUpgrade: true
           }
-        }));
-        const authBody = await parseResponse(authResponse, { method: 'GET', route: '/wp/v2/users/me' });
+        );
+
         auth = {
-          ok: authResponse.statusCode < 400,
+          ok: true,
           statusCode: authResponse.statusCode,
-          user: authBody.data?.slug || authBody.data?.name || null
+          user: authResponse.data?.slug || authResponse.data?.name || null
         };
       } catch (error) {
         auth = {
           ok: false,
           statusCode: error.statusCode || null,
+          kind: error.kind || 'unexpected_error',
           message: error.message
         };
       }

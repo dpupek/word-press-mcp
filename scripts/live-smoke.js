@@ -4,6 +4,7 @@ import { createLogger } from '../src/logger.js';
 import { createWpClient } from '../src/wp-client.js';
 import {
   cloneElementorDocumentWorkflow,
+  cleanupElementorKitWorkflow,
   importElementorDocumentMediaWorkflow,
   restoreElementorCandidateWorkflow
 } from '../src/workflows.js';
@@ -80,18 +81,6 @@ const revisionsOperation = buildOperation({
     { name: 'parent', location: 'path' },
     { name: 'context', location: 'query' },
     { name: 'per_page', location: 'query' }
-  ]
-});
-
-const deleteTemplateOperation = buildOperation({
-  toolName: 'wp_v2_elementor_library_id_delete',
-  route: '/wp/v2/elementor_library/(?P<id>[\\d]+)',
-  method: 'DELETE',
-  pathParams: ['id'],
-  requestStyle: 'query',
-  args: [
-    { name: 'id', location: 'path' },
-    { name: 'force', location: 'query' }
   ]
 });
 
@@ -260,14 +249,27 @@ try {
 
   if (templateCloneId) {
     try {
-      await client.execute(deleteTemplateOperation, { id: templateCloneId, force: true });
-      cleanup.push({ target: 'elementor_library', id: templateCloneId, ok: true });
+      const cleanupResult = await cleanupElementorKitWorkflow(client, {
+        mode: 'execute',
+        confirm: true,
+        documentId: templateCloneId,
+        allowForceKitDelete: true
+      });
+      cleanup.push({
+        target: 'elementor_library',
+        id: templateCloneId,
+        ok: true,
+        pathUsed: cleanupResult.pathUsed
+      });
     } catch (error) {
       cleanup.push({
         target: 'elementor_library',
         id: templateCloneId,
         ok: false,
-        error: safeError(error, { route: deleteTemplateOperation.route, method: deleteTemplateOperation.method })
+        error: safeError(error, {
+          route: '/wp/v2/elementor_library/(?P<id>[\\d]+)',
+          method: 'DELETE'
+        })
       });
     }
   }
