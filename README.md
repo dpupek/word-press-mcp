@@ -81,47 +81,9 @@ This project also captures site-specific lessons from live testing:
 - a WordPress account with Application Password support
 - an MCP client such as Codex
 
-### Install locally
+### Configure Your MCP Client With `npx`
 
-```powershell
-git clone https://github.com/dpupek/word-press-mcp.git
-cd word-press-mcp
-npm install
-```
-
-### Run in development
-
-```powershell
-node index.js
-```
-
-### Environment
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `WP_SITE_URL` | yes | Base site URL, for example `https://example.com` |
-| `WP_USERNAME` | yes for authenticated reads/writes | WordPress username |
-| `WP_APP_PASSWORD` | yes for authenticated reads/writes | WordPress Application Password |
-| `WORDPRESS_MCP_SAFE_MODE` | optional | Defaults to enabled; mutating tools require `confirm: true` |
-| `WORDPRESS_MCP_ALLOW_INSECURE_TLS` | optional | Explicit opt-in for self-signed/untrusted test certificates |
-| `WORDPRESS_MCP_ROUTE_CAPTURE_URL` | optional | Route-capture URL used by generator scripts |
-
-### Run the live smoke test
-
-```powershell
-$env:WP_SITE_URL='https://example.com'
-$env:WP_USERNAME='your-user'
-$env:WP_APP_PASSWORD='your-app-password'
-npm run smoke:live
-```
-
-That script creates disposable content, exercises guarded Elementor workflows, and reports cleanup results.
-
----
-
-## Recommended MCP Setup
-
-For Codex-style `npx` usage:
+For most users, this is the fastest way to start. Add a server entry like this to your MCP settings:
 
 ```toml
 [mcp_servers.wordpress]
@@ -143,6 +105,44 @@ If you need the current test-site behavior with an untrusted certificate chain, 
 ```
 
 Use that only for development or test environments.
+
+### Environment Variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `WP_SITE_URL` | yes | Base site URL, for example `https://example.com` |
+| `WP_USERNAME` | yes for authenticated reads/writes | WordPress username |
+| `WP_APP_PASSWORD` | yes for authenticated reads/writes | WordPress Application Password |
+| `WORDPRESS_MCP_SAFE_MODE` | optional | Defaults to enabled; mutating tools require `confirm: true` |
+| `WORDPRESS_MCP_ALLOW_INSECURE_TLS` | optional | Explicit opt-in for self-signed/untrusted test certificates |
+| `WORDPRESS_MCP_ROUTE_CAPTURE_URL` | optional | Route-capture URL used by generator scripts |
+
+### Alternative: Install And Run Locally
+
+If you want to develop or run the server directly from a checkout:
+
+```powershell
+git clone https://github.com/dpupek/word-press-mcp.git
+cd word-press-mcp
+npm install
+```
+
+### Run in development
+
+```powershell
+node index.js
+```
+
+### Run the live smoke test
+
+```powershell
+$env:WP_SITE_URL='https://example.com'
+$env:WP_USERNAME='your-user'
+$env:WP_APP_PASSWORD='your-app-password'
+npm run smoke:live
+```
+
+That script creates disposable content, exercises guarded Elementor workflows, and reports cleanup results.
 
 ---
 

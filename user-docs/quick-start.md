@@ -14,7 +14,47 @@ The WordPress MCP server gives an MCP client two ways to work:
 - a WordPress site with REST API access
 - a WordPress user with an Application Password
 
-## Install
+## Primary Path: Configure Your MCP Client With `npx`
+
+For most users, the right starting point is to add this server to your MCP settings instead of cloning the repo.
+
+Example configuration:
+
+```toml
+[mcp_servers.wordpress]
+type = "stdio"
+command = "npx"
+args = ["--yes", "-p", "github:dpupek/word-press-mcp", "wordpress-mcp"]
+startup_timeout_sec = 20
+shutdown_timeout_sec = 5
+tool_timeout_sec = 90
+description = "WordPress MCP server with generated endpoint coverage and guarded Elementor workflows"
+
+env = { "WP_SITE_URL" = "https://example.com", "WP_USERNAME" = "your-user", "WP_APP_PASSWORD" = "your-app-password", "WORDPRESS_MCP_SAFE_MODE" = "true" }
+```
+
+Use this extra setting only for test environments with untrusted certificates:
+
+```toml
+"WORDPRESS_MCP_ALLOW_INSECURE_TLS" = "true"
+```
+
+## Required Environment
+
+The required settings are:
+
+- `WP_SITE_URL`
+- `WP_USERNAME`
+- `WP_APP_PASSWORD`
+
+Recommended optional settings:
+
+- `WORDPRESS_MCP_SAFE_MODE=true`
+- `WORDPRESS_MCP_ALLOW_INSECURE_TLS=true` only for test environments with broken or self-signed TLS
+
+## Alternative Path: Install And Run Locally
+
+Use this when you want to develop, debug, or run the server from a checkout.
 
 ```powershell
 git clone https://github.com/dpupek/word-press-mcp.git
@@ -22,7 +62,7 @@ cd word-press-mcp
 npm install
 ```
 
-## Required Environment
+Set environment variables in your shell:
 
 ```powershell
 $env:WP_SITE_URL='https://example.com'
@@ -36,7 +76,7 @@ Optional for test environments with untrusted TLS:
 $env:WORDPRESS_MCP_ALLOW_INSECURE_TLS='true'
 ```
 
-## Run the Server
+Run the server:
 
 ```powershell
 node index.js
