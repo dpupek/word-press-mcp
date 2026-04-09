@@ -39,6 +39,8 @@ Use this extra setting only for test environments with untrusted certificates:
 "WORDPRESS_MCP_ALLOW_INSECURE_TLS" = "true"
 ```
 
+The first `npx` launch is expected to be slower than later launches because npm has to install dependencies and run the package `prepare` step before the MCP server starts.
+
 ## Required Environment
 
 The required settings are:
@@ -80,6 +82,12 @@ Run the server:
 
 ```powershell
 node index.js
+```
+
+If you want to validate the same fresh-install path that git-based `npx` uses:
+
+```powershell
+npm run smoke:package
 ```
 
 ## Verify the Build

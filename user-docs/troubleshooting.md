@@ -16,6 +16,33 @@ $env:WP_USERNAME
 $env:WP_APP_PASSWORD
 ```
 
+## First `npx` Run Is Slow Or Fails Before Startup
+
+Git-based `npx` installs run the package `prepare` step on first install.
+
+Expected behavior:
+
+- the first run is slower than later runs
+- dev dependencies are installed during that first setup
+- if `prepare` fails, the MCP server never starts
+
+Check:
+
+```powershell
+npm run smoke:package
+```
+
+If you are using Codex, server `stderr` is captured in the Codex log file, which is the right place to inspect startup/build failures.
+
+Typical Codex location:
+
+- `C:\Users\<your-user>\.codex\log\codex-tui.log`
+
+Optional runtime logging controls:
+
+- `WORDPRESS_MCP_DEBUG=true`
+- `WORDPRESS_MCP_LOG_FILE=C:\path\to\wordpress-mcp.log`
+
 ## TLS Errors In Node
 
 Symptom:

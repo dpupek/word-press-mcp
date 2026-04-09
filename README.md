@@ -106,6 +106,8 @@ If you need the current test-site behavior with an untrusted certificate chain, 
 
 Use that only for development or test environments.
 
+The first `npx` run from GitHub is slower than later runs because npm installs dev dependencies and runs the package `prepare` step before the server starts.
+
 ### Environment Variables
 
 | Variable | Required | Purpose |
@@ -115,6 +117,8 @@ Use that only for development or test environments.
 | `WP_APP_PASSWORD` | yes for authenticated reads/writes | WordPress Application Password |
 | `WORDPRESS_MCP_SAFE_MODE` | optional | Defaults to enabled; mutating tools require `confirm: true` |
 | `WORDPRESS_MCP_ALLOW_INSECURE_TLS` | optional | Explicit opt-in for self-signed/untrusted test certificates |
+| `WORDPRESS_MCP_DEBUG` | optional | Enables additional stderr logging for startup and tool execution |
+| `WORDPRESS_MCP_LOG_FILE` | optional | Appends structured logs to a file in addition to stderr |
 | `WORDPRESS_MCP_ROUTE_CAPTURE_URL` | optional | Route-capture URL used by generator scripts |
 
 ### Alternative: Install And Run Locally
@@ -143,6 +147,16 @@ npm run smoke:live
 ```
 
 That script creates disposable content, exercises guarded Elementor workflows, and reports cleanup results.
+
+### Packaging Smoke Check
+
+To validate the fresh-install path used by git-based `npx` installs:
+
+```powershell
+npm run smoke:package
+```
+
+That command copies the repo to a temp directory, runs a fresh `npm install`, verifies the generated runtime artifacts exist, starts the MCP server briefly, and confirms it does not write protocol-breaking output to `stdout`.
 
 ---
 
