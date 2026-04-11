@@ -117,7 +117,7 @@ async function smokeRunServer(cwd) {
       resolve({ stdout, stderr });
     }, 1500);
 
-    child.on('close', () => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer);
       if (!settled) {
         settled = true;
@@ -126,7 +126,16 @@ async function smokeRunServer(cwd) {
           return;
         }
 
-        resolve({ stdout, stderr });
+        reject(
+          new Error(
+            [
+              'Server exited during MCP startup smoke before the readiness timeout.',
+              `Exit code: ${code ?? 'null'}`,
+              `Signal: ${signal ?? 'null'}`,
+              stderr ? `STDERR:\n${stderr}` : 'STDERR:\n<empty>'
+            ].join('\n')
+          )
+        );
       }
     });
   });

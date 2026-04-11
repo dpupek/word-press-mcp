@@ -50,6 +50,56 @@ function namespaceRouteNeedsFilePath(method, route, name) {
   return method.toUpperCase() === 'POST' && route === '/wp/v2/media' && name === 'filePath';
 }
 
+function operationSignature(operation) {
+  return JSON.stringify({
+    namespace: operation.namespace,
+    route: operation.route,
+    method: operation.method,
+    action: operation.action,
+    mutation: operation.mutation,
+    requestStyle: operation.requestStyle,
+    pathParams: operation.pathParams,
+    args: operation.args,
+    isCore: operation.isCore,
+    source: operation.source,
+    description: operation.description
+  });
+}
+
+function dedupeOperations(operations) {
+  return uniqueBy(operations, (operation) => operationSignature(operation));
+}
+
+function assignUniqueToolNames(operations) {
+  const collisions = new Map();
+  for (const operation of operations) {
+    collisions.set(operation.toolName, (collisions.get(operation.toolName) || 0) + 1);
+  }
+
+  const seenPerToolName = new Map();
+  return operations.map((operation) => {
+    if ((collisions.get(operation.toolName) || 0) === 1) {
+      return operation;
+    }
+
+    const methodKey = `${operation.toolName}:${operation.method.toLowerCase()}`;
+    const sameMethodIndex = (seenPerToolName.get(methodKey) || 0) + 1;
+    seenPerToolName.set(methodKey, sameMethodIndex);
+
+    const sameMethodCount = operations.filter(
+      (candidate) => candidate.toolName === operation.toolName && candidate.method === operation.method
+    ).length;
+
+    return {
+      ...operation,
+      toolName:
+        sameMethodCount === 1
+          ? `${operation.toolName}_${operation.method.toLowerCase()}`
+          : `${operation.toolName}_${operation.method.toLowerCase()}_${sameMethodIndex}`
+    };
+  });
+}
+
 function normalizeArgSchema(name, schema = {}, pathParamNames, method, route) {
   const type = Array.isArray(schema.type) ? 'mixed' : schema.type || (pathParamNames.includes(name) ? 'string' : 'mixed');
   return {
@@ -70,7 +120,6 @@ function normalizeArgSchema(name, schema = {}, pathParamNames, method, route) {
 export function buildOperationsFromRouteIndex(routeIndex) {
   const routes = routeIndex.routes || {};
   const operations = [];
-  const collisions = new Map();
 
   for (const [route, routeMeta] of Object.entries(routes)) {
     const namespace = routeMeta.namespace || '';
@@ -100,7 +149,6 @@ export function buildOperationsFromRouteIndex(routeIndex) {
         }
 
         const toolName = buildToolName(namespace, route, method, pathParams);
-        collisions.set(toolName, (collisions.get(toolName) || 0) + 1);
         operations.push({
           toolName,
           namespace,
@@ -124,13 +172,7 @@ export function buildOperationsFromRouteIndex(routeIndex) {
     }
   }
 
-  return operations
-    .map((operation) =>
-      (collisions.get(operation.toolName) || 0) === 1
-        ? operation
-        : { ...operation, toolName: `${operation.toolName}_${operation.method.toLowerCase()}` }
-    )
-    .sort((a, b) => a.toolName.localeCompare(b.toolName));
+  return assignUniqueToolNames(dedupeOperations(operations)).sort((a, b) => a.toolName.localeCompare(b.toolName));
 }
 
 export function loadRouteIndex() {

@@ -4112,21 +4112,7 @@
     "description": "GET /elementor/v1/onboarding"
   },
   {
-    "toolName": "elementor_v1_onboarding_pro_install_screen_list_get",
-    "namespace": "elementor/v1",
-    "route": "/elementor/v1/onboarding/pro-install-screen",
-    "method": "GET",
-    "action": "list",
-    "mutation": false,
-    "requestStyle": "query",
-    "pathParams": [],
-    "args": [],
-    "isCore": false,
-    "source": "site",
-    "description": "GET /elementor/v1/onboarding/pro-install-screen"
-  },
-  {
-    "toolName": "elementor_v1_onboarding_pro_install_screen_list_get",
+    "toolName": "elementor_v1_onboarding_pro_install_screen_list",
     "namespace": "elementor/v1",
     "route": "/elementor/v1/onboarding/pro-install-screen",
     "method": "GET",

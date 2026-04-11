@@ -1,11 +1,11 @@
 # WordPress MCP Tool Catalog
 
 ## Summary
-- Total endpoint tools: 501
-- Read tools: 204
+- Total endpoint tools: 500
+- Read tools: 203
 - Mutating tools: 297
 - Core-source tools: 271
-- Site/plugin-source tools: 230
+- Site/plugin-source tools: 229
 
 ## Safety Contract
 - Every mutating endpoint tool accepts `confirm` and requires `confirm: true` while safe mode is enabled.
@@ -145,8 +145,7 @@
 | `elementor_v1_onboarding_install_theme_create` | `POST` | `/elementor/v1/onboarding/install-theme` | `site` | `true` |
 | `elementor_v1_onboarding_install_theme_list` | `GET` | `/elementor/v1/onboarding/install-theme` | `site` | `false` |
 | `elementor_v1_onboarding_list` | `GET` | `/elementor/v1/onboarding` | `site` | `false` |
-| `elementor_v1_onboarding_pro_install_screen_list_get` | `GET` | `/elementor/v1/onboarding/pro-install-screen` | `site` | `false` |
-| `elementor_v1_onboarding_pro_install_screen_list_get` | `GET` | `/elementor/v1/onboarding/pro-install-screen` | `site` | `false` |
+| `elementor_v1_onboarding_pro_install_screen_list` | `GET` | `/elementor/v1/onboarding/pro-install-screen` | `site` | `false` |
 | `elementor_v1_onboarding_user_choices_create_patch` | `PATCH` | `/elementor/v1/onboarding/user-choices` | `site` | `true` |
 | `elementor_v1_onboarding_user_choices_create_post` | `POST` | `/elementor/v1/onboarding/user-choices` | `site` | `true` |
 | `elementor_v1_onboarding_user_choices_create_put` | `PUT` | `/elementor/v1/onboarding/user-choices` | `site` | `true` |
