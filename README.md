@@ -108,6 +108,32 @@ Use that only for development or test environments.
 
 The first `npx` run from GitHub is slower than later runs because npm installs dev dependencies and runs the package `prepare` step before the server starts.
 
+### GitHub Release Channels For `npx`
+
+This repo follows four GitHub-based install patterns:
+
+- default branch build:
+  - `npx --yes -p github:dpupek/word-press-mcp wordpress-mcp`
+- latest stable release:
+  - `npx --yes -p github:dpupek/word-press-mcp#latest-release wordpress-mcp`
+- latest beta release, once a prerelease tag exists:
+  - `npx --yes -p github:dpupek/word-press-mcp#beta-release wordpress-mcp`
+- exact version:
+  - `npx --yes -p github:dpupek/word-press-mcp#v1.0.0 wordpress-mcp`
+
+Recommended meaning of each selector:
+
+- `main`:
+  current branch state, useful for development and immediate fixes
+- `latest-release`:
+  moving tag pointing to the newest stable release commit
+- `beta-release`:
+  moving tag pointing to the newest beta/prerelease commit when a beta has been published
+- `vX.Y.Z` or `vX.Y.Z-beta.N`:
+  immutable version tags for exact reproducibility
+
+See [GitHub Release Channels](user-docs/github-release-channels.md) for the exact tagging pattern.
+
 ### Environment Variables
 
 | Variable | Required | Purpose |
@@ -177,6 +203,7 @@ Start here:
 
 - [Quick Start](user-docs/quick-start.md)
 - [Elementor Workflows](user-docs/elementor-workflows.md)
+- [GitHub Release Channels](user-docs/github-release-channels.md)
 - [Live Validation](user-docs/live-validation.md)
 - [Troubleshooting](user-docs/troubleshooting.md)
 

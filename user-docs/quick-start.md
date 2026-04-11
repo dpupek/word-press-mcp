@@ -41,6 +41,28 @@ Use this extra setting only for test environments with untrusted certificates:
 
 The first `npx` launch is expected to be slower than later launches because npm has to install dependencies and run the package `prepare` step before the MCP server starts.
 
+## GitHub-Based Version Selectors
+
+Use these forms when you want to control which GitHub ref `npx` installs:
+
+- default `main` branch:
+  - `args = ["--yes", "-p", "github:dpupek/word-press-mcp", "wordpress-mcp"]`
+- latest stable release:
+  - `args = ["--yes", "-p", "github:dpupek/word-press-mcp#latest-release", "wordpress-mcp"]`
+- latest beta release, once a prerelease tag exists:
+  - `args = ["--yes", "-p", "github:dpupek/word-press-mcp#beta-release", "wordpress-mcp"]`
+- exact version:
+  - `args = ["--yes", "-p", "github:dpupek/word-press-mcp#v1.0.0", "wordpress-mcp"]`
+
+Meaning:
+
+- `main` is the moving development/default branch
+- `latest-release` is the moving stable channel tag
+- `beta-release` is the moving beta channel tag when a beta has been published
+- `vX.Y.Z` and `vX.Y.Z-beta.N` are immutable version tags
+
+For the detailed tagging process, see [GitHub Release Channels](github-release-channels.md).
+
 ## Required Environment
 
 The required settings are:
