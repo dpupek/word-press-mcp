@@ -130,6 +130,7 @@ This will:
 ## First Workflow Tools To Use
 
 - `health`
+- `workflow_get_site_identity`
 - `help`
 - `tool_catalog`
 - `workflow_list_menu_structure`

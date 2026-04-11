@@ -22,6 +22,7 @@
 - `workflow_assign_menu_locations`
 - `workflow_reorder_menu_items`
 - `workflow_clone_menu`
+- `workflow_get_site_identity`
 - `workflow_get_post_urls`
 - `workflow_inspect_post`
 - `workflow_inspect_elementor_document`

@@ -247,6 +247,120 @@ function buildPostUrlSummary({ siteUrl, postType, document, contextUsed }) {
   };
 }
 
+function summarizeCapabilities({ health, settingsContextUsed, currentUser, routes }) {
+  const namespaces = Array.isArray(health?.namespaces) ? health.namespaces : [];
+  const routeKeys = Object.keys(routes || {});
+  return {
+    authenticated: Boolean(health?.auth?.ok),
+    editContextAvailable: settingsContextUsed === 'edit' || Boolean(health?.auth?.ok),
+    currentUserCanIdentifySelf: Boolean(currentUser?.id),
+    hasElementor: namespaces.some((namespace) => namespace.startsWith('elementor')),
+    hasClassicMenus: routeKeys.some((route) => route.startsWith('/wp/v2/menus') || route.startsWith('/wp/v2/menu-items') || route.startsWith('/wp/v2/menu-locations')),
+    hasNavigation:
+      routeKeys.some((route) => route.startsWith('/wp/v2/navigation')) ||
+      routeKeys.some((route) => route.startsWith('/wp-block-editor/v1/navigation'))
+  };
+}
+
+export async function getSiteIdentityWorkflow(client, config) {
+  const health = await client.healthCheck();
+  const rootIndexOperation = {
+    toolName: 'root_index_get',
+    route: '/',
+    method: 'GET',
+    args: [],
+    pathParams: [],
+    requestStyle: 'query'
+  };
+  const settingsOperation = {
+    toolName: 'wp_v2_settings_list',
+    route: '/wp/v2/settings',
+    method: 'GET',
+    args: [],
+    pathParams: [],
+    requestStyle: 'query'
+  };
+  const currentUserOperation = {
+    toolName: 'wp_v2_users_me_get',
+    route: '/wp/v2/users/me',
+    method: 'GET',
+    args: [{ name: 'context', location: 'query' }],
+    pathParams: [],
+    requestStyle: 'query'
+  };
+
+  const rootIndexResult = await client.execute(rootIndexOperation, {});
+  let settingsResult = null;
+  let settingsContextUsed = null;
+  try {
+    const response = await executeWithEditFallback(client, settingsOperation, {});
+    settingsResult = response.result;
+    settingsContextUsed = response.contextUsed;
+  } catch {
+    settingsResult = null;
+    settingsContextUsed = null;
+  }
+
+  let currentUser = null;
+  try {
+    const userResponse = await client.execute(currentUserOperation, { context: 'edit' });
+    currentUser = userResponse.data || null;
+  } catch {
+    currentUser = null;
+  }
+
+  const rootData = rootIndexResult.data || {};
+  const routes = rootData.routes || {};
+  const settings = settingsResult?.data || {};
+  const siteTitle = settings.title || settings.name || rootData.name || null;
+  const reportedSiteUrl = settings.url || settings.home || rootData.home || rootData.url || null;
+  const siteUrl = config.siteUrl || reportedSiteUrl;
+
+  return {
+    ok: true,
+    workflow: 'workflow_get_site_identity',
+    site: {
+      title: siteTitle,
+      siteUrl,
+      configuredSiteUrl: config.siteUrl,
+      reportedSiteUrl,
+      description: settings.description || null,
+      language: settings.language || null,
+      timezone: settings.timezone || null
+    },
+    currentUser: currentUser
+      ? {
+          id: currentUser.id,
+          slug: currentUser.slug || null,
+          name: currentUser.name || null,
+          url: currentUser.url || null
+        }
+      : null,
+    environment: {
+      auth: health.auth,
+      routeCount: health.routeCount,
+      namespaces: health.namespaces
+    },
+    capabilities: summarizeCapabilities({
+      health,
+      settingsContextUsed,
+      currentUser,
+      routes
+    }),
+    notes: [
+      settingsContextUsed === 'view'
+        ? 'Site settings were loaded with view context, so some edit-only identity details may be unavailable.'
+        : null,
+      !settingsResult
+        ? 'The server could not read wp/v2/settings, so site identity was derived from the root index and configured URL.'
+        : null,
+      !currentUser && health?.auth?.ok
+        ? 'Authentication appears healthy, but users/me identity details were not available for this account or route.'
+        : null
+    ].filter(Boolean)
+  };
+}
+
 export async function inspectPostWorkflow(client, args) {
   const operation = {
     toolName: 'wp_v2_posts_id_get',

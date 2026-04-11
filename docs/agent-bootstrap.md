@@ -5,8 +5,8 @@ Use this when first connecting to a WordPress site through this MCP server.
 ## Startup Checklist
 
 1. Run `health`.
-2. Record the site URL, auth state, route count, and namespaces.
-3. If auth is available, fetch site identity before doing anything else.
+2. Run `workflow_get_site_identity`.
+3. Record the site title, site URL, auth state, route count, namespaces, and capability hints.
 4. Prefer workflow tools over raw endpoint tools unless you need exact route control.
 
 ## First Calls
@@ -24,10 +24,9 @@ Read:
 
 ### 2. Get the site identity
 
-Use the generated read tools for:
+Use:
 
-- `wp_v2_settings_list`
-- optionally `wp_v2_users_me_get`
+- `workflow_get_site_identity`
 
 Capture:
 
@@ -35,6 +34,7 @@ Capture:
 - site URL
 - current user
 - whether edit-context reads appear to work
+- whether Elementor and classic menu surfaces appear to be present
 
 ### 3. Get a fast picture of the site
 
@@ -64,7 +64,7 @@ This gives a fast snapshot of:
 ### Understand this site fast
 
 1. `health`
-2. `wp_v2_settings_list`
+2. `workflow_get_site_identity`
 3. `wp_v2_posts_list`
 4. `wp_v2_pages_list`
 5. `workflow_list_menu_structure`
@@ -93,8 +93,9 @@ This gives a fast snapshot of:
 
 1. `workflow_list_menu_structure`
 2. `workflow_upsert_menu_item` in `plan` mode
-3. `workflow_assign_menu_locations` in `plan` mode if needed
-4. execute only after item type, parent, order, and locations are clear
+3. `workflow_reorder_menu_items` in `plan` mode when hierarchy or ordering will change
+4. `workflow_assign_menu_locations` in `plan` mode if needed
+5. execute only after item type, parent, order, and locations are clear
 
 ### Get public and preview URLs
 

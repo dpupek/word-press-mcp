@@ -9,6 +9,7 @@
 ## Best Practices
 - Start with `agent_bootstrap` when first connecting to an unfamiliar site.
 - Prefer workflow tools when the task spans multiple API calls or involves taxonomy/media coordination.
+- Use `workflow_get_site_identity` as the preferred first-call orientation path when you need site title, URL, current user, namespaces, and capability hints in one result.
 - Use generated endpoint tools when you need low-level control over a specific route.
 - Use `workflow_get_post_urls` when you need a deterministic public URL or the best available preview URL candidate for a post or page.
 - Use `workflow_list_menu_structure`, `workflow_upsert_menu_item`, `workflow_reorder_menu_items`, `workflow_clone_menu`, and `workflow_assign_menu_locations` for classic WordPress menu operations instead of assembling menu/menu-item requests by hand.

@@ -8,6 +8,7 @@ import {
   draftOrUpdatePostWorkflow,
   diffElementorDocumentsWorkflow,
   getPostUrlsWorkflow,
+  getSiteIdentityWorkflow,
   importElementorDocumentMediaWorkflow,
   inspectElementorHistoryWorkflow,
   listMenuStructureWorkflow,
@@ -227,6 +228,120 @@ test('getPostUrlsWorkflow: derives a preview URL for draft pages', async () => {
   assert.match(result.urls.previewUrl, /preview=true/);
   assert.equal(result.urls.isPublished, false);
   assert.ok(result.urls.notes.some((note) => /authenticated browser session/i.test(note)));
+});
+
+test('getSiteIdentityWorkflow: returns normalized site identity and capability hints', async () => {
+  // Arrange
+  const config = { siteUrl: 'https://example.com' };
+  const identityClient = {
+    async healthCheck() {
+      return {
+        siteUrl: 'https://example.com',
+        routeCount: 501,
+        namespaces: ['wp/v2', 'elementor/v1'],
+        auth: { ok: true, statusCode: 200, user: 'admin' }
+      };
+    },
+    async execute(operation, payload) {
+      if (operation.route === '/') {
+        return {
+          data: {
+            name: 'Example Site',
+            home: 'https://example.com',
+            url: 'http://example.com',
+            routes: {
+              '/wp/v2/posts': {},
+              '/wp/v2/menu-items': {},
+              '/wp/v2/menus': {}
+            }
+          }
+        };
+      }
+
+      if (operation.route === '/wp/v2/settings') {
+        return {
+          data: {
+            title: 'Example Site',
+            description: 'Example Description',
+            url: 'https://example.com',
+            language: 'en_US',
+            timezone: 'America/Chicago'
+          }
+        };
+      }
+
+      if (operation.route === '/wp/v2/users/me') {
+        return {
+          data: {
+            id: 9,
+            slug: 'admin',
+            name: 'Admin User',
+            url: 'https://example.com/author/admin'
+          }
+        };
+      }
+
+      throw new Error(`Unexpected identity operation: ${operation.route} ${payload?.context || ''}`);
+    }
+  };
+
+  // Assert (initial)
+  assert.equal(config.siteUrl, 'https://example.com');
+
+  // Act
+  const result = await getSiteIdentityWorkflow(identityClient, config);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_get_site_identity');
+  assert.equal(result.site.title, 'Example Site');
+  assert.equal(result.site.siteUrl, 'https://example.com');
+  assert.equal(result.site.reportedSiteUrl, 'https://example.com');
+  assert.equal(result.currentUser.slug, 'admin');
+  assert.equal(result.capabilities.authenticated, true);
+  assert.equal(result.capabilities.hasElementor, true);
+  assert.equal(result.capabilities.hasClassicMenus, true);
+});
+
+test('getSiteIdentityWorkflow: does not claim classic menus when routes are absent', async () => {
+  // Arrange
+  const config = { siteUrl: 'https://example.com' };
+  const identityClient = {
+    async healthCheck() {
+      return {
+        siteUrl: 'https://example.com',
+        routeCount: 100,
+        namespaces: ['wp/v2'],
+        auth: { ok: false, statusCode: 401, user: null }
+      };
+    },
+    async execute(operation) {
+      if (operation.route === '/') {
+        return {
+          data: {
+            name: 'Example Site',
+            url: 'http://example.com',
+            routes: {
+              '/wp/v2/posts': {},
+              '/wp/v2/pages': {}
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected identity operation: ${operation.route}`);
+    }
+  };
+
+  // Assert (initial)
+  assert.equal(config.siteUrl, 'https://example.com');
+
+  // Act
+  const result = await getSiteIdentityWorkflow(identityClient, config);
+
+  // Assert
+  assert.equal(result.site.siteUrl, 'https://example.com');
+  assert.equal(result.site.reportedSiteUrl, 'http://example.com');
+  assert.equal(result.capabilities.hasClassicMenus, false);
 });
 
 test('listMenuStructureWorkflow: returns a nested menu tree', async () => {

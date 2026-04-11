@@ -26,9 +26,13 @@
 - [x] Add client-owned safe-read retry behavior for transient failures and authenticated `http` to `https` recovery when WordPress signals `rest_not_logged_in`.
 - [x] Add a dedicated `agent_bootstrap` resource/tool so agents can orient to a site quickly without reading exhaustive reference material.
 - [x] Add `workflow_get_post_urls` so preview/public URL retrieval is a first-class workflow instead of an inferred endpoint detail.
-- [ ] Add more site-specific overrides if additional plugin routes need specialized handling.
-- [ ] Add a dedicated site-identity workflow that returns site name, URL, current user, namespaces, and capability hints in one call.
 - [x] Live-validate the expanded menu workflows against disposable menus on the test site.
+
+## Iteration 6
+- [x] Add a dedicated site-identity workflow that returns site name, URL, current user, namespaces, and capability hints in one call.
+- [x] Expose the site-identity workflow in `agent_bootstrap` as the preferred first-call orientation path.
+- [ ] Add more site-specific overrides only if additional plugin routes prove they need specialized handling beyond the normalized client/error layer.
+- [ ] Decide whether classic navigation/menu workflows need export/import helpers beyond the current clone and reorder coverage.
 
 ## Progress Notes
 - Route capture and generated parity now reflect 501 operations from the refreshed HTTPS snapshot.
@@ -39,5 +43,7 @@
 - Live smoke now cleans up disposable Elementor kits through the guarded `force_delete_kit` retry path when Elementor intercepts the standard delete.
 - The menu workflow layer now supports structural inspection, item upsert, location assignment, reordering, and cloning.
 - Disposable live menu validation succeeded on `https://test.nexportsolutions.com`: menu create, item create, hierarchical reorder, clone, and menu cleanup all worked through the workflow layer.
+- The repo now has repeatable live validation entry points for both major workflow surfaces: `npm run smoke:live` for post/Elementor flows and `npm run smoke:live:menus` for classic menu flows.
+- Agents now have a single first-call orientation workflow, `workflow_get_site_identity`, instead of piecing site identity together from `health`, settings, and user endpoints manually.
 - The current test site exposes no classic menu locations, so location assignment remains validated only in `plan` mode there.
 - The public home page currently has a missing `favicon.ico` request returning `404`.

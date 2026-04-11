@@ -18,6 +18,7 @@ import {
   draftOrUpdatePostWorkflow,
   diffElementorDocumentsWorkflow,
   getPostUrlsWorkflow,
+  getSiteIdentityWorkflow,
   getElementorTemplateConditionsWorkflow,
   inspectElementorHistoryWorkflow,
   inspectPostWorkflow,
@@ -117,6 +118,12 @@ export async function startServer() {
   );
   registerTool('health', 'Check WordPress MCP configuration and API connectivity.', noopSchema, async () =>
     jsonResult({ ok: true, ...(await client.healthCheck()) })
+  );
+  registerTool(
+    'workflow_get_site_identity',
+    'Return normalized site identity, current user, namespaces, and capability hints for fast orientation.',
+    noopSchema,
+    async () => jsonResult(await getSiteIdentityWorkflow(client, config))
   );
 
   for (const operation of operations) {
