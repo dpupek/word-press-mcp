@@ -17,6 +17,7 @@ test('package metadata: git-based npx contract is explicit', () => {
     nodeEngine: pkg.engines?.node,
     bin: pkg.bin?.['wordpress-mcp'],
     hasSrc: files.includes('src/'),
+    hasSpec: files.includes('spec/'),
     hasDocs: files.includes('docs/')
   };
 
@@ -27,5 +28,6 @@ test('package metadata: git-based npx contract is explicit', () => {
   assert.equal(result.nodeEngine, '>=20');
   assert.equal(result.bin, './index.js');
   assert.equal(result.hasSrc, true);
+  assert.equal(result.hasSpec, true);
   assert.equal(result.hasDocs, true);
 });

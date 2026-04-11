@@ -55,6 +55,11 @@ function safeSnippet(value) {
   return typeof value === 'string' ? value.slice(0, 400) : '';
 }
 
+function responseSnippet(value) {
+  const source = typeof value === 'string' ? value : JSON.stringify(value);
+  return source.replace(/\s+/g, ' ').slice(0, 200) || '<empty>';
+}
+
 function extractErrorCode(error) {
   return error?.code || error?.cause?.code || error?.socket?.code || '';
 }
@@ -196,13 +201,32 @@ export function createWpClient(config, logger, transport = {}) {
         sanitizeForLog({
           url: currentUrl,
           method: operation.method,
-          attempt: attemptNumber
+          attempt: attemptNumber,
+          headers: requestInit.headers,
+          hasBody: requestInit.body !== undefined,
+          bodyPreview:
+            typeof requestInit.body === 'string'
+              ? requestInit.body
+              : requestInit.body instanceof Buffer
+                ? `<buffer:${requestInit.body.byteLength}>`
+                : undefined
         })
       );
 
       try {
         const response = await requestImpl(currentUrl, requestOptions(requestInit));
         const parsed = await parseResponse(response, operation, currentUrl);
+
+        logger.debug(
+          'wordpress response',
+          sanitizeForLog({
+            url: currentUrl,
+            method: operation.method,
+            attempt: attemptNumber,
+            statusCode: response.statusCode,
+            snippet: responseSnippet(parsed.raw)
+          })
+        );
 
         if (response.statusCode >= 400) {
           throw normalizeHttpError(operation, currentUrl, response.statusCode, parsed.data);
@@ -229,14 +253,46 @@ export function createWpClient(config, logger, transport = {}) {
         if (allowHttpsUpgrade && shouldRetryWithHttps(config, normalized, currentUrl)) {
           const httpsUrl = buildHttpsVariant(currentUrl);
           if (httpsUrl && httpsUrl !== currentUrl) {
+            logger.info(
+              'wordpress request retrying with https',
+              sanitizeForLog({
+                fromUrl: currentUrl,
+                toUrl: httpsUrl,
+                method: operation.method,
+                reason: normalized.wpCode || normalized.kind
+              })
+            );
             currentUrl = httpsUrl;
             continue;
           }
         }
 
         if (attempts.length === 1 && shouldRetryTransient(normalized, safeToRetry)) {
+          logger.warn(
+            'wordpress request retrying after transient failure',
+            sanitizeForLog({
+              url: currentUrl,
+              method: operation.method,
+              kind: normalized.kind,
+              statusCode: normalized.statusCode || null,
+              code: normalized.code || null
+            })
+          );
           continue;
         }
+
+        logger.warn(
+          'wordpress request failed',
+          sanitizeForLog({
+            url: currentUrl,
+            method: operation.method,
+            kind: normalized.kind,
+            statusCode: normalized.statusCode || null,
+            code: normalized.code || null,
+            wpCode: normalized.wpCode || null,
+            message: normalized.message
+          })
+        );
 
         throw {
           ...normalized,

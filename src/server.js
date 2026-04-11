@@ -51,7 +51,7 @@ export async function startServer() {
 
   const mcpServer = new McpServer({
     name: 'wordpress-mcp',
-    version: '0.1.0'
+    version: '0.1.2'
   });
 
   function registerTool(name, description, schemaShape, handler) {
@@ -63,10 +63,18 @@ export async function startServer() {
         inputSchema: identityShape(schemaShape)
       },
       async (args) => {
+        const startedAt = Date.now();
+        logger.debug('tool start', { name, args });
         try {
-          return await handler(args || {});
+          const result = await handler(args || {});
+          logger.debug('tool success', { name, durationMs: Date.now() - startedAt });
+          return result;
         } catch (error) {
-          logger.warn('tool failed', { name, error: error.message || String(error) });
+          logger.warn('tool failed', {
+            name,
+            durationMs: Date.now() - startedAt,
+            error: error.message || String(error)
+          });
           return jsonResult({
             ok: false,
             tool: name,
@@ -114,7 +122,7 @@ export async function startServer() {
     jsonResult({ ok: true, markdown: loadGeneratedCatalog() })
   );
   registerTool('version', 'Return the WordPress MCP server version.', noopSchema, async () =>
-    jsonResult({ ok: true, name: 'wordpress-mcp', version: '0.1.0', routeCount: operations.length })
+    jsonResult({ ok: true, name: 'wordpress-mcp', version: '0.1.2', routeCount: operations.length })
   );
   registerTool('health', 'Check WordPress MCP configuration and API connectivity.', noopSchema, async () =>
     jsonResult({ ok: true, ...(await client.healthCheck()) })

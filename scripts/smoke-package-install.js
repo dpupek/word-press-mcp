@@ -143,13 +143,24 @@ async function smokeRunServer(cwd) {
 
 async function main() {
   const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'wordpress-mcp-package-'));
-  const checkoutDir = path.join(tempRoot, 'repo');
+  const packSourceDir = path.join(tempRoot, 'pack-source');
+  const installDir = path.join(tempRoot, 'install');
 
   try {
-    await copyDirectory(rootDir, checkoutDir);
-    await runCommand(npmCommand, ['install'], { cwd: checkoutDir, env: process.env });
-    const metadata = JSON.parse(await fsp.readFile(path.join(checkoutDir, 'package.json'), 'utf8'));
-    const generatedOperationsPath = path.join(checkoutDir, 'src', 'generated', 'operations.generated.json');
+    await copyDirectory(rootDir, packSourceDir);
+    await runCommand(npmCommand, ['pack'], { cwd: packSourceDir, env: process.env });
+
+    const metadata = JSON.parse(await fsp.readFile(path.join(packSourceDir, 'package.json'), 'utf8'));
+    const tarballName = `${metadata.name}-${metadata.version}.tgz`;
+    const tarballPath = path.join(packSourceDir, tarballName);
+
+    await fsp.mkdir(installDir, { recursive: true });
+    await fsp.writeFile(path.join(installDir, 'package.json'), JSON.stringify({ name: 'smoke-install', private: true }), 'utf8');
+    await runCommand(npmCommand, ['install', tarballPath], { cwd: installDir, env: process.env });
+
+    const installedPackageDir = path.join(installDir, 'node_modules', metadata.name);
+    const generatedOperationsPath = path.join(installedPackageDir, 'src', 'generated', 'operations.generated.json');
+    const coreNamespacesPath = path.join(installedPackageDir, 'spec', 'core-namespaces.json');
 
     if (metadata.scripts?.prepare !== 'npm run build') {
       throw new Error(`Expected prepare script to be "npm run build" but found "${metadata.scripts?.prepare || ''}".`);
@@ -159,17 +170,24 @@ async function main() {
       throw new Error(`Generated operations file missing after fresh install: ${generatedOperationsPath}`);
     }
 
-    const smokeResult = await smokeRunServer(checkoutDir);
+    if (!fs.existsSync(coreNamespacesPath)) {
+      throw new Error(`Runtime spec file missing after packed install: ${coreNamespacesPath}`);
+    }
+
+    const smokeResult = await smokeRunServer(installedPackageDir);
 
     console.log(
       JSON.stringify(
         {
           ok: true,
-          checkoutDir,
+          installDir,
+          installedPackageDir,
           prepareScript: metadata.scripts.prepare,
           stdoutBytes: smokeResult.stdout.length,
           stderrBytes: smokeResult.stderr.length,
-          generatedOperationsPath
+          generatedOperationsPath,
+          coreNamespacesPath,
+          tarballPath
         },
         null,
         2

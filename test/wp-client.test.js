@@ -14,12 +14,24 @@ function fakeResponse({ statusCode = 200, headers = { 'content-type': 'applicati
   };
 }
 
-const logger = {
-  debug() {},
-  info() {},
-  warn() {},
-  error() {}
-};
+function createLoggerSpy() {
+  const entries = [];
+  return {
+    entries,
+    debug(message, meta) {
+      entries.push({ level: 'debug', message, meta });
+    },
+    info(message, meta) {
+      entries.push({ level: 'info', message, meta });
+    },
+    warn(message, meta) {
+      entries.push({ level: 'warn', message, meta });
+    },
+    error(message, meta) {
+      entries.push({ level: 'error', message, meta });
+    }
+  };
+}
 
 const baseConfig = {
   siteUrl: 'http://example.com',
@@ -32,6 +44,7 @@ const baseConfig = {
 test('createWpClient: upgrades http auth failure to https automatically for safe reads', async () => {
   // Arrange
   const calls = [];
+  const logger = createLoggerSpy();
   const client = createWpClient(
     baseConfig,
     logger,
@@ -79,6 +92,7 @@ test('createWpClient: upgrades http auth failure to https automatically for safe
 test('createWpClient: retries transient safe-read failures once', async () => {
   // Arrange
   let attempts = 0;
+  const logger = createLoggerSpy();
   const client = createWpClient(
     { ...baseConfig, siteUrl: 'https://example.com' },
     logger,
@@ -124,6 +138,7 @@ test('createWpClient: retries transient safe-read failures once', async () => {
 test('createWpClient: does not retry transient failures for mutations', async () => {
   // Arrange
   let attempts = 0;
+  const logger = createLoggerSpy();
   const client = createWpClient(
     { ...baseConfig, siteUrl: 'https://example.com' },
     logger,
@@ -160,4 +175,44 @@ test('createWpClient: does not retry transient failures for mutations', async ()
     }
   );
   assert.equal(attempts, 1);
+});
+
+test('createWpClient: emits sanitized request and response debug logs', async () => {
+  // Arrange
+  const logger = createLoggerSpy();
+  const client = createWpClient(
+    { ...baseConfig, siteUrl: 'https://example.com' },
+    logger,
+    {
+      request: async () =>
+        fakeResponse({
+          statusCode: 200,
+          body: { id: 321, title: { rendered: 'Hello world' } }
+        })
+    }
+  );
+  const operation = {
+    toolName: 'wp_v2_posts_id_get',
+    route: '/wp/v2/posts/(?P<id>[\\d]+)',
+    method: 'GET',
+    pathParams: ['id'],
+    args: [{ name: 'id', location: 'path' }],
+    requestStyle: 'query',
+    mutation: false
+  };
+
+  // Assert (initial)
+  assert.equal(logger.entries.length, 0);
+
+  // Act
+  await client.execute(operation, { id: 321 });
+
+  // Assert
+  const requestLog = logger.entries.find((entry) => entry.message === 'wordpress request');
+  const responseLog = logger.entries.find((entry) => entry.message === 'wordpress response');
+  assert.ok(requestLog);
+  assert.ok(responseLog);
+  assert.equal(requestLog.meta.headers.Authorization, '[redacted]');
+  assert.equal(responseLog.meta.statusCode, 200);
+  assert.match(responseLog.meta.snippet, /Hello world/);
 });

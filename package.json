@@ -1,6 +1,6 @@
 {
   "name": "wordpress-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "bin": {
     "wordpress-mcp": "./index.js"
@@ -8,6 +8,7 @@
   "files": [
     "index.js",
     "src/",
+    "spec/",
     "docs/",
     "user-docs/",
     "README.md",
