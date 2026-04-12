@@ -15,7 +15,7 @@ export function getConfig() {
     safeMode: parseBoolean(process.env.WORDPRESS_MCP_SAFE_MODE, true),
     allowInsecureTls: parseBoolean(process.env.WORDPRESS_MCP_ALLOW_INSECURE_TLS, false),
     logFile: process.env.WORDPRESS_MCP_LOG_FILE?.trim() || '',
-    userAgent: process.env.WORDPRESS_MCP_USER_AGENT?.trim() || 'wordpress-mcp/0.1.2',
+    userAgent: process.env.WORDPRESS_MCP_USER_AGENT?.trim() || 'wordpress-mcp/0.1.3',
     routeCaptureUrl: (process.env.WORDPRESS_MCP_ROUTE_CAPTURE_URL || 'https://test.nexportsolutions.com/wp-json')
       .trim()
       .replace(/\/$/, '')
