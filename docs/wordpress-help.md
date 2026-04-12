@@ -11,7 +11,7 @@
 - Prefer workflow tools when the task spans multiple API calls or involves taxonomy/media coordination.
 - Use `workflow_get_site_identity` as the preferred first-call orientation path when you need site title, URL, current user, namespaces, and capability hints in one result.
 - Use generated endpoint tools when you need low-level control over a specific route.
-- Use `workflow_get_post_urls` when you need a deterministic public URL or the best available preview URL candidate for a post or page.
+- Use `workflow_get_post_urls` when you need a public URL for published content or the best available preview URL candidate for drafts. Drafts may return `publicUrl: null` on some sites; this is expected.
 - Use `workflow_list_menu_structure`, `workflow_upsert_menu_item`, `workflow_reorder_menu_items`, `workflow_clone_menu`, and `workflow_assign_menu_locations` for classic WordPress menu operations instead of assembling menu/menu-item requests by hand.
 - Use `npm run smoke:live:menus` when you need a disposable live proof that the classic menu workflows still work against the current site.
 - Keep writes explicit. Validate categories, tags, and media assets before touching posts.
@@ -21,6 +21,15 @@
 - Follow the normalized actionable response returned by the MCP server.
 - Validation errors indicate the request was blocked before any write occurred.
 - Authentication and permission issues are surfaced as actionable tool errors without requiring the agent to reason about transport details.
+
+## Expected Behavior
+- Drafts may return `publicUrl: null` in `workflow_get_post_urls`; this is normal on many sites. Use `previewUrl` for drafts.
+- Preview URLs may require authenticated browser access even when the REST call succeeds.
+
+## Known Limitations
+- Role-downgrade checks require a real non-admin account; some sites block user creation via REST.
+- `workflow_inspect_post` is post-only and hardcodes `context=edit`, so view-context fallback testing requires a lower-privilege account.
+- Elementor kit deletion can return HTML confirmation instead of REST JSON; use `workflow_cleanup_elementor_kit` for the guarded delete path.
 
 ## NexPort Layer
 - Default NexPort blog workflows to `draft` status unless asked to publish.

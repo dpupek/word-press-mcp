@@ -25,18 +25,21 @@ Example configuration:
 type = "stdio"
 command = "npx"
 args = ["--yes", "-p", "github:dpupek/word-press-mcp", "wordpress-mcp"]
-startup_timeout_sec = 20
+startup_timeout_sec = 200
 shutdown_timeout_sec = 5
 tool_timeout_sec = 90
 description = "WordPress MCP server with generated endpoint coverage and guarded Elementor workflows"
-
-env = { "WP_SITE_URL" = "https://example.com", "WP_USERNAME" = "your-user", "WP_APP_PASSWORD" = "your-app-password", "WORDPRESS_MCP_SAFE_MODE" = "true" }
+[mcp_servers.wordpress.env]
+WP_SITE_URL = "https://example.com"
+WP_USERNAME = "your-user"
+WP_APP_PASSWORD = "your-app-password"
+WORDPRESS_MCP_SAFE_MODE = "true"
 ```
 
 Use this extra setting only for test environments with untrusted certificates:
 
 ```toml
-"WORDPRESS_MCP_ALLOW_INSECURE_TLS" = "true"
+WORDPRESS_MCP_ALLOW_INSECURE_TLS = "true"
 ```
 
 The first `npx` launch is expected to be slower than later launches because npm has to install dependencies and run the package `prepare` step before the MCP server starts.

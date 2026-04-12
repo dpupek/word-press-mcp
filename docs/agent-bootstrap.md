@@ -103,7 +103,7 @@ This gives a fast snapshot of:
 
 Use it to determine:
 
-- public URL for published content
+- public URL for published content (drafts may return `publicUrl: null` on some sites)
 - preview URL candidate for drafts/pages
 - whether preview likely needs authenticated browser access
 

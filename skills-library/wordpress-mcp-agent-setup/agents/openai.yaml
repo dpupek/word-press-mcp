@@ -1,0 +1,4 @@
+interface:
+  display_name: "WordPress MCP Agent Setup"
+  short_description: "Install deps and configure Codex MCP entries for WordPress"
+  default_prompt: "Set up the WordPress MCP server for a Codex agent, install required dependencies, and add a per-site MCP entry to config.toml with recommended naming and env values."

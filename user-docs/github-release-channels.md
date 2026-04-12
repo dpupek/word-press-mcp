@@ -76,6 +76,15 @@ Use these refs consistently:
 type = "stdio"
 command = "npx"
 args = ["--yes", "-p", "github:dpupek/word-press-mcp#latest-release", "wordpress-mcp"]
+startup_timeout_sec = 200
+shutdown_timeout_sec = 5
+tool_timeout_sec = 90
+description = "WordPress MCP server with generated endpoint coverage and guarded Elementor workflows"
+[mcp_servers.wordpress.env]
+WP_SITE_URL = "https://example.com"
+WP_USERNAME = "your-user"
+WP_APP_PASSWORD = "your-app-password"
+WORDPRESS_MCP_SAFE_MODE = "true"
 ```
 
 ### Latest beta
@@ -85,6 +94,15 @@ args = ["--yes", "-p", "github:dpupek/word-press-mcp#latest-release", "wordpress
 type = "stdio"
 command = "npx"
 args = ["--yes", "-p", "github:dpupek/word-press-mcp#beta-release", "wordpress-mcp"]
+startup_timeout_sec = 200
+shutdown_timeout_sec = 5
+tool_timeout_sec = 90
+description = "WordPress MCP server with generated endpoint coverage and guarded Elementor workflows"
+[mcp_servers.wordpress_beta.env]
+WP_SITE_URL = "https://example.com"
+WP_USERNAME = "your-user"
+WP_APP_PASSWORD = "your-app-password"
+WORDPRESS_MCP_SAFE_MODE = "true"
 ```
 
 ### Exact version
@@ -94,4 +112,13 @@ args = ["--yes", "-p", "github:dpupek/word-press-mcp#beta-release", "wordpress-m
 type = "stdio"
 command = "npx"
 args = ["--yes", "-p", "github:dpupek/word-press-mcp#v1.0.0", "wordpress-mcp"]
+startup_timeout_sec = 200
+shutdown_timeout_sec = 5
+tool_timeout_sec = 90
+description = "WordPress MCP server with generated endpoint coverage and guarded Elementor workflows"
+[mcp_servers.wordpress_pinned.env]
+WP_SITE_URL = "https://example.com"
+WP_USERNAME = "your-user"
+WP_APP_PASSWORD = "your-app-password"
+WORDPRESS_MCP_SAFE_MODE = "true"
 ```

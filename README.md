@@ -90,18 +90,22 @@ For most users, this is the fastest way to start. Add a server entry like this t
 type = "stdio"
 command = "npx"
 args = ["--yes", "-p", "github:dpupek/word-press-mcp", "wordpress-mcp"]
-startup_timeout_sec = 20
+startup_timeout_sec = 200
 shutdown_timeout_sec = 5
 tool_timeout_sec = 90
 description = "WordPress MCP server with generated endpoint coverage and guarded Elementor workflows"
 
-env = { "WP_SITE_URL" = "https://example.com", "WP_USERNAME" = "your-user", "WP_APP_PASSWORD" = "your-app-password", "WORDPRESS_MCP_SAFE_MODE" = "true" }
+[mcp_servers.wordpress.env]
+WP_SITE_URL = "https://example.com"
+WP_USERNAME = "your-user"
+WP_APP_PASSWORD = "your-app-password"
+WORDPRESS_MCP_SAFE_MODE = "true"
 ```
 
 If you need the current test-site behavior with an untrusted certificate chain, add:
 
 ```toml
-"WORDPRESS_MCP_ALLOW_INSECURE_TLS" = "true"
+WORDPRESS_MCP_ALLOW_INSECURE_TLS = "true"
 ```
 
 Use that only for development or test environments.
@@ -206,6 +210,13 @@ Start here:
 - [GitHub Release Channels](user-docs/github-release-channels.md)
 - [Live Validation](user-docs/live-validation.md)
 - [Troubleshooting](user-docs/troubleshooting.md)
+- [Agent Test Checklist](user-docs/agent-mcp-test.md)
+
+## Skills Library
+
+This repo includes a curated skill library under [`skills-library/`](skills-library). The WordPress MCP setup skill lives here:
+
+- [`skills-library/wordpress-mcp-agent-setup`](skills-library/wordpress-mcp-agent-setup)
 
 ---
 
