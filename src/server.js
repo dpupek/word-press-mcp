@@ -17,7 +17,9 @@ import {
   cleanupElementorKitWorkflow,
   draftOrUpdatePostWorkflow,
   diffElementorDocumentsWorkflow,
+  getLiveRenderStateWorkflow,
   getPostUrlsWorkflow,
+  getSiteCapabilitiesWorkflow,
   getSiteIdentityWorkflow,
   getElementorTemplateConditionsWorkflow,
   inspectElementorHistoryWorkflow,
@@ -28,9 +30,12 @@ import {
   listElementorTemplatesWorkflow,
   mediaFeaturedImageWorkflow,
   nexportBlogPostWorkflow,
+  patchElementorDocumentWorkflow,
+  publishAndVerifyElementorPageWorkflow,
   reorderMenuItemsWorkflow,
   restoreElementorCandidateWorkflow,
   taxonomyReconcileWorkflow,
+  updateElementorWidgetWorkflow,
   upsertMenuItemWorkflow,
   validateElementorDocumentWorkflow,
   validateFilePath,
@@ -132,6 +137,12 @@ export async function startServer() {
     'Return normalized site identity, current user, namespaces, and capability hints for fast orientation.',
     noopSchema,
     async () => jsonResult(await getSiteIdentityWorkflow(client, config))
+  );
+  registerTool(
+    'workflow_get_site_capabilities',
+    'Probe high-value WordPress and Elementor capabilities before risky workflows begin.',
+    noopSchema,
+    async () => jsonResult(await getSiteCapabilitiesWorkflow(client, config))
   );
 
   for (const operation of operations) {
@@ -344,6 +355,102 @@ export async function startServer() {
       postId: z.number().int()
     },
     async (args) => jsonResult(await validateElementorDocumentWorkflow(client, args))
+  );
+
+  registerTool(
+    'workflow_get_live_render_state',
+    'Compare stored Elementor state, REST-rendered content, and live frontend HTML for one page.',
+    {
+      postType: z.enum(['posts', 'pages', 'elementor_library']).default('pages'),
+      postId: z.number().int(),
+      liveUrl: z.string().optional(),
+      expectedText: z.array(z.string()).optional(),
+      forbiddenText: z.array(z.string()).optional()
+    },
+    async (args) => jsonResult(await getLiveRenderStateWorkflow(client, config, args))
+  );
+
+  registerTool(
+    'workflow_update_elementor_widget',
+    'Plan or execute a safe patch to one Elementor widget inside `_elementor_data`.',
+    {
+      mode: z.enum(['plan', 'execute']).optional(),
+      postType: z.enum(['posts', 'pages', 'elementor_library']).default('pages'),
+      postId: z.number().int(),
+      widgetId: z.string(),
+      expectedWidgetType: z.string().optional(),
+      settingsPatch: z.record(z.any()),
+      purgeCache: z.boolean().optional(),
+      verifyLive: z.boolean().optional(),
+      liveUrl: z.string().optional(),
+      expectedText: z.array(z.string()).optional(),
+      forbiddenText: z.array(z.string()).optional(),
+      confirm: z.boolean().optional()
+    },
+    async (args) => jsonResult(await updateElementorWidgetWorkflow(client, args, config))
+  );
+
+  registerTool(
+    'workflow_patch_elementor_document',
+    'Plan or execute ordered Elementor tree operations against stable element ids.',
+    {
+      mode: z.enum(['plan', 'execute']).optional(),
+      postType: z.enum(['posts', 'pages', 'elementor_library']).default('pages'),
+      postId: z.number().int(),
+      operations: z.array(
+        z.object({
+          op: z.enum([
+            'replaceWidgetSettings',
+            'mergeWidgetSettings',
+            'replaceElement',
+            'insertBefore',
+            'insertAfter',
+            'appendChild',
+            'removeElement',
+            'moveElement',
+            'replaceContainerChildren'
+          ]),
+          widgetId: z.string().optional(),
+          targetId: z.string().optional(),
+          elementId: z.string().optional(),
+          expectedWidgetType: z.string().optional(),
+          settingsPatch: z.record(z.any()).optional(),
+          element: z.any().optional(),
+          children: z.array(z.any()).optional(),
+          position: z.enum(['before', 'after', 'appendChild']).optional()
+        })
+      ),
+      purgeCache: z.boolean().optional(),
+      verifyLive: z.boolean().optional(),
+      liveUrl: z.string().optional(),
+      expectedText: z.array(z.string()).optional(),
+      forbiddenText: z.array(z.string()).optional(),
+      confirm: z.boolean().optional()
+    },
+    async (args) => jsonResult(await patchElementorDocumentWorkflow(client, args, config))
+  );
+
+  registerTool(
+    'workflow_publish_and_verify_elementor_page',
+    'Plan or execute a safe Elementor mutation followed by cache purge and live HTML verification.',
+    {
+      mode: z.enum(['plan', 'execute']).optional(),
+      postType: z.enum(['posts', 'pages', 'elementor_library']).default('pages'),
+      postId: z.number().int(),
+      update: z.object({
+        type: z.enum(['widget', 'documentPatch']),
+        widgetId: z.string().optional(),
+        expectedWidgetType: z.string().optional(),
+        settingsPatch: z.record(z.any()).optional(),
+        operations: z.array(z.any()).optional()
+      }),
+      purgeCache: z.boolean().optional(),
+      liveUrl: z.string().optional(),
+      expectedText: z.array(z.string()).optional(),
+      forbiddenText: z.array(z.string()).optional(),
+      confirm: z.boolean().optional()
+    },
+    async (args) => jsonResult(await publishAndVerifyElementorPageWorkflow(client, config, args))
   );
 
   registerTool(

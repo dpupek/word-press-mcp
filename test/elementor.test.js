@@ -89,6 +89,43 @@ test('validateElementorAudit: reports issues for malformed elementor data', () =
   assert.ok(result.issues.some((issue) => issue.includes('_elementor_data')));
 });
 
+test('validateElementorAudit: returns structured findings while preserving legacy issue and warning arrays', () => {
+  // Arrange
+  const audit = extractElementorAudit({
+    meta: {
+      _elementor_edit_mode: 'builder',
+      _elementor_template_type: 'wp-page',
+      _elementor_data: JSON.stringify([
+        {
+          id: 'hero',
+          elType: 'container',
+          settings: {},
+          elements: [
+            {
+              id: 'heading',
+              elType: 'widget',
+              widgetType: 'heading',
+              settings: { title: 'Hero Title' },
+              elements: []
+            }
+          ]
+        }
+      ])
+    }
+  });
+
+  // Assert (initial)
+  assert.equal(audit.is_elementor, true);
+
+  // Act
+  const result = validateElementorAudit(audit);
+
+  // Assert
+  assert.ok(Array.isArray(result.findings));
+  assert.ok(result.findings.some((finding) => finding.code === 'missing_global_bindings'));
+  assert.ok(result.warnings.some((warning) => /__globals__/.test(warning)));
+});
+
 test('diffElementorAudits: reports structural deltas between source and target', () => {
   // Arrange
   const source = extractElementorAudit({

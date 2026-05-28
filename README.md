@@ -40,9 +40,14 @@ This server is meant to sit in the middle:
   - featured image/media assignment
   - taxonomy reconciliation
   - post inspection
+  - site identity and active capability probing
   - Elementor inspection and validation
+  - stored vs live render-state inspection
+  - safe Elementor widget patching
+  - safe ordered Elementor document patching
   - Elementor revision/autosave inspection
   - Elementor document diffing
+  - cache-aware publish and live verification
   - Elementor clone
   - guarded Elementor restore
   - guarded Elementor document media import
@@ -61,13 +66,14 @@ Elementor is not treated as a magic black box. The server understands the practi
 - `_elementor_page_settings`
 - `_elementor_conditions`
 
-It can inspect, validate, diff, clone, restore, and re-import media for Elementor-backed documents without assuming undocumented save behavior is safe.
+It can inspect, validate, diff, patch, clone, restore, publish-and-verify, and re-import media for Elementor-backed documents without assuming undocumented save behavior is safe.
 
 This project also captures site-specific lessons from live testing:
 
 - application-password auth may work over `https` and fail over plain `http`
 - some environments require explicit insecure-TLS opt-in for test certificates
 - some Elementor routes still return `403` even for admin users
+- stored content, REST-rendered content, and live frontend output can diverge after Elementor writes
 - deleting Elementor kits can trigger an HTML confirmation flow instead of normal REST JSON
 
 ---

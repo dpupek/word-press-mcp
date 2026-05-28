@@ -156,6 +156,7 @@ This will:
 
 - `health`
 - `workflow_get_site_identity`
+- `workflow_get_site_capabilities`
 - `help`
 - `tool_catalog`
 - `workflow_list_menu_structure`
@@ -169,6 +170,10 @@ This will:
 - `workflow_draft_or_update_post`
 - `workflow_inspect_elementor_document`
 - `workflow_validate_elementor_document`
+- `workflow_get_live_render_state`
+- `workflow_update_elementor_widget`
+- `workflow_patch_elementor_document`
+- `workflow_publish_and_verify_elementor_page`
 
 ## Safe Default
 
@@ -176,7 +181,10 @@ For risky Elementor work, use this order:
 
 1. inspect
 2. validate
-3. diff
-4. restore if rollback is the goal
-5. clone or media import
-6. only then broader writes
+3. probe capabilities
+4. compare live render state
+5. patch one widget or document
+6. publish and verify if cache behavior matters
+7. diff
+8. restore if rollback is the goal
+9. clone or media import

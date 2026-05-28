@@ -10,6 +10,7 @@
 - Start with `agent_bootstrap` when first connecting to an unfamiliar site.
 - Prefer workflow tools when the task spans multiple API calls or involves taxonomy/media coordination.
 - Use `workflow_get_site_identity` as the preferred first-call orientation path when you need site title, URL, current user, namespaces, and capability hints in one result.
+- Use `workflow_get_site_capabilities` immediately after site identity when Elementor cache, live verification, or plugin-route permissions matter.
 - Use generated endpoint tools when you need low-level control over a specific route.
 - Use `workflow_get_post_urls` when you need a public URL for published content or the best available preview URL candidate for drafts. Drafts may return `publicUrl: null` on some sites; this is expected.
 - Use `workflow_list_menu_structure`, `workflow_upsert_menu_item`, `workflow_reorder_menu_items`, `workflow_clone_menu`, and `workflow_assign_menu_locations` for classic WordPress menu operations instead of assembling menu/menu-item requests by hand.
@@ -41,6 +42,10 @@
 - Collection reads for posts, pages, and `elementor_library` also accept `elementor_only` to filter results down to Elementor-authored items after enrichment.
 - Use `workflow_inspect_elementor_document` for a structured audit of `_elementor_edit_mode`, `_elementor_template_type`, `_elementor_data`, `_elementor_page_settings`, and `_elementor_conditions`.
 - Use `workflow_validate_elementor_document` to turn that audit into explicit issues and warnings before any clone or write workflow.
+- Use `workflow_get_live_render_state` when you need to compare stored Elementor data, REST-rendered content, and live frontend HTML separately.
+- Use `workflow_update_elementor_widget` for small targeted widget edits instead of rewriting full `_elementor_data`.
+- Use `workflow_patch_elementor_document` for ordered tree changes such as insert, replace, move, and remove operations against stable element ids.
+- Use `workflow_publish_and_verify_elementor_page` when cache purge and live marker verification need to be part of the same write workflow.
 - Use `workflow_list_elementor_templates` and `workflow_get_elementor_template_conditions` to inspect theme-builder templates and assignments without mutating them.
 - Use `workflow_inspect_elementor_history` to inspect revisions and autosaves with the same Elementor audit logic.
 - Use `workflow_clone_elementor_document` to copy a known-good Elementor document into a new draft without inventing new builder JSON from scratch.
@@ -55,12 +60,16 @@
 - Default safe operating sequence for Elementor work:
   1. inspect
   2. validate
-  3. diff against another document or revision/autosave if needed
-  4. restore a validated revision/autosave when rollback is the goal
-  5. clone or media-import
-  6. only then consider higher-risk writes
+  3. probe capabilities
+  4. compare stored vs live render state if the page looks stale
+  5. patch one widget or apply an ordered document patch
+  6. publish and verify when live cache behavior matters
+  7. diff against another document or revision/autosave if needed
+  8. restore a validated revision/autosave when rollback is the goal
+  9. clone or media-import
 - Prefer cloning a known-good Elementor document over generating builder JSON from scratch.
 - `context=edit` is required for the most useful Elementor metadata, but lower-privilege accounts may force a fallback to `context=view`, which means workflows must tolerate partial insight.
 - Elementor document media import is a document-scoped remap/import operation keyed by document ID, not a general file-upload substitute.
 - Even with valid administrator auth, `elementor/v1/post` currently returns `403` on this site, so Elementor workflows should continue preferring the guarded WordPress-core and site-editor routes unless a specific Elementor endpoint has been validated.
+- `content.raw`, `content.rendered`, and live frontend HTML can diverge after Elementor writes; treat them as separate signals rather than one publish state.
 - Deleting an `elementor_library` kit can return an Elementor HTML confirmation page instead of REST JSON. Use `workflow_cleanup_elementor_kit` so the standard delete path is attempted first and the `force_delete_kit` retry path is only taken with explicit opt-in. On some sites, Elementor still requires the browser-admin confirmation URL even after that retry.

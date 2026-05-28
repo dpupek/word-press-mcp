@@ -6,8 +6,9 @@ Use this when first connecting to a WordPress site through this MCP server.
 
 1. Run `health`.
 2. Run `workflow_get_site_identity`.
-3. Record the site title, site URL, auth state, route count, namespaces, and capability hints.
-4. Prefer workflow tools over raw endpoint tools unless you need exact route control.
+3. Run `workflow_get_site_capabilities`.
+4. Record the site title, site URL, auth state, route count, namespaces, and capability hints.
+5. Prefer workflow tools over raw endpoint tools unless you need exact route control.
 
 ## First Calls
 
@@ -36,7 +37,20 @@ Capture:
 - whether edit-context reads appear to work
 - whether Elementor and classic menu surfaces appear to be present
 
-### 3. Get a fast picture of the site
+### 3. Probe task-critical capabilities
+
+Use:
+
+- `workflow_get_site_capabilities`
+
+Capture:
+
+- whether edit-context reads really work
+- whether Elementor cache purge works
+- whether `elementor/v1/post` is blocked
+- whether Elementor templates and page-cache health probes are reachable
+
+### 4. Get a fast picture of the site
 
 Recommended sequence:
 
@@ -65,10 +79,11 @@ This gives a fast snapshot of:
 
 1. `health`
 2. `workflow_get_site_identity`
-3. `wp_v2_posts_list`
-4. `wp_v2_pages_list`
-5. `workflow_list_menu_structure`
-6. `workflow_list_elementor_templates` if Elementor routes exist
+3. `workflow_get_site_capabilities`
+4. `wp_v2_posts_list`
+5. `wp_v2_pages_list`
+6. `workflow_list_menu_structure`
+7. `workflow_list_elementor_templates` if Elementor routes exist
 
 ### Work on a post or page safely
 
@@ -82,8 +97,12 @@ This gives a fast snapshot of:
 
 1. `workflow_inspect_elementor_document`
 2. `workflow_validate_elementor_document`
-3. `workflow_diff_elementor_documents` or `workflow_inspect_elementor_history` if needed
-4. then choose one of:
+3. `workflow_get_live_render_state` when stored and live output might diverge
+4. `workflow_diff_elementor_documents` or `workflow_inspect_elementor_history` if needed
+5. then choose one of:
+   - `workflow_update_elementor_widget`
+   - `workflow_patch_elementor_document`
+   - `workflow_publish_and_verify_elementor_page`
    - `workflow_clone_elementor_document`
    - `workflow_restore_elementor_candidate`
    - `workflow_import_elementor_document_media`

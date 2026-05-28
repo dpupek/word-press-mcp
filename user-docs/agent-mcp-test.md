@@ -18,6 +18,7 @@ Run these calls in a fresh Codex thread to ensure the server starts cleanly:
 
 - `help`
 - `workflow_get_site_identity`
+- `workflow_get_site_capabilities`
 
 ## 3. Read-only validation
 
@@ -53,8 +54,13 @@ Run `workflow_get_post_urls` on the draft to verify preview URL selection.
 
 ## 7. Elementor coverage (if installed)
 
+- `workflow_get_site_capabilities`
 - `workflow_list_elementor_templates`
 - `workflow_inspect_elementor_document` on a known template ID
+- `workflow_get_live_render_state` on a known public Elementor page
+- Optional: `workflow_update_elementor_widget` in `plan` mode
+- Optional: `workflow_patch_elementor_document` in `plan` mode
+- Optional: `workflow_publish_and_verify_elementor_page` with a disposable or safely cloneable page
 - Optional: `workflow_clone_elementor_document` with `confirm=true`, then clean up
 
 ## 8. Error-handling validation

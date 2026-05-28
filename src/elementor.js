@@ -22,6 +22,19 @@ function safeJsonParse(value) {
   }
 }
 
+function buildFinding(severity, code, message, extra = {}) {
+  return {
+    severity,
+    code,
+    message,
+    ...extra
+  };
+}
+
+function isObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function visitElements(elements, state, depth = 1) {
   if (!Array.isArray(elements)) return;
   state.maxDepth = Math.max(state.maxDepth, depth);
@@ -129,6 +142,14 @@ function buildElementorSummary(item) {
   };
 }
 
+function visitAuditElements(elements, visitor, parent = null) {
+  if (!Array.isArray(elements)) return;
+  for (const element of elements) {
+    visitor(element, parent);
+    visitAuditElements(element?.elements, visitor, element);
+  }
+}
+
 function buildThemeBuilderState(item) {
   const meta = item?.meta || {};
   const templateType = meta._elementor_template_type || '';
@@ -200,11 +221,20 @@ export function extractElementorAudit(item) {
   const audit = buildElementorState(item);
   const summary = buildElementorSummary(item);
   const themeBuilder = buildThemeBuilderState(item);
+  const meta = item?.meta || {};
+  const parsedData = safeJsonParse(meta._elementor_data);
+  const parsedPageSettings = safeJsonParse(meta._elementor_page_settings);
+  const parsedConditions = safeJsonParse(meta._elementor_conditions);
   return {
     ...audit,
     summary,
     theme_builder: themeBuilder,
     missing_meta_keys: ELEMENTOR_META_KEYS.filter((key) => item?.meta?.[key] === undefined),
+    parsed: {
+      data: parsedData.ok && Array.isArray(parsedData.value) ? parsedData.value : null,
+      page_settings: parsedPageSettings.ok ? parsedPageSettings.value : null,
+      conditions: parsedConditions.ok ? parsedConditions.value : null
+    },
     title: item?.title?.raw || item?.title?.rendered || null,
     status: item?.status || null,
     slug: item?.slug || null,
@@ -215,39 +245,103 @@ export function extractElementorAudit(item) {
 export function validateElementorAudit(audit) {
   const issues = [];
   const warnings = [];
+  const findings = [];
 
   if (!audit.is_elementor) {
-    warnings.push('Document does not currently look Elementor-authored.');
+    const message = 'Document does not currently look Elementor-authored.';
+    warnings.push(message);
+    findings.push(buildFinding('warning', 'not_elementor_document', message));
   }
   if (audit.is_elementor && audit.elementor_edit_mode !== 'builder') {
-    issues.push('Elementor edit mode is not `builder`.');
+    const message = 'Elementor edit mode is not `builder`.';
+    issues.push(message);
+    findings.push(buildFinding('error', 'edit_mode_not_builder', message));
   }
   if (audit.has_elementor_data && !audit.elementor_data_json_valid) {
-    issues.push('`_elementor_data` is present but not valid JSON.');
+    const message = '`_elementor_data` is present but not valid JSON.';
+    issues.push(message);
+    findings.push(buildFinding('error', 'invalid_elementor_data', message));
   }
   if (audit.has_page_settings && !audit.elementor_page_settings_json_valid) {
-    issues.push('`_elementor_page_settings` is not valid JSON/object data.');
+    const message = '`_elementor_page_settings` is not valid JSON/object data.';
+    issues.push(message);
+    findings.push(buildFinding('error', 'invalid_page_settings', message));
   }
   if (audit.has_conditions && !audit.elementor_conditions_json_valid) {
-    issues.push('`_elementor_conditions` is not valid JSON/array data.');
+    const message = '`_elementor_conditions` is not valid JSON/array data.';
+    issues.push(message);
+    findings.push(buildFinding('error', 'invalid_conditions', message));
   }
   if (audit.is_elementor && !audit.has_elementor_data) {
-    warnings.push('Elementor edit mode is set but `_elementor_data` is empty or missing.');
+    const message = 'Elementor edit mode is set but `_elementor_data` is empty or missing.';
+    warnings.push(message);
+    findings.push(buildFinding('warning', 'missing_elementor_data', message));
   }
   if (audit.summary.parse_ok && audit.summary.total_elements === 0 && audit.has_elementor_data) {
-    warnings.push('Elementor data parsed successfully but contains no elements.');
+    const message = 'Elementor data parsed successfully but contains no elements.';
+    warnings.push(message);
+    findings.push(buildFinding('warning', 'empty_elementor_tree', message));
   }
   if (audit.theme_builder.is_theme_builder_document && audit.theme_builder.condition_count === 0) {
-    warnings.push('Theme-builder document has no conditions assigned.');
+    const message = 'Theme-builder document has no conditions assigned.';
+    warnings.push(message);
+    findings.push(buildFinding('warning', 'missing_theme_builder_conditions', message));
   }
   if (audit.missing_meta_keys.length > 0) {
-    warnings.push(`Missing Elementor meta keys: ${audit.missing_meta_keys.join(', ')}`);
+    const message = `Missing Elementor meta keys: ${audit.missing_meta_keys.join(', ')}`;
+    warnings.push(message);
+    findings.push(buildFinding('warning', 'missing_meta_keys', message));
+  }
+
+  if (audit.summary.parse_ok && Array.isArray(audit.parsed?.data)) {
+    let hasGlobals = false;
+    let hasTextColor = false;
+    let hasGlobalTypography = false;
+    let hasHeroBackground = false;
+
+    visitAuditElements(audit.parsed.data, (element) => {
+      const settings = element?.settings || {};
+      if (isObject(settings.__globals__) && Object.keys(settings.__globals__).length > 0) {
+        hasGlobals = true;
+      }
+      if (settings.text_color || settings.title_color) {
+        hasTextColor = true;
+      }
+      if (settings.typography_typography || settings.title_typography_typography || settings.__globals__?.typography) {
+        hasGlobalTypography = true;
+      }
+      if (settings.background_image?.url || settings.background_background === 'classic') {
+        hasHeroBackground = true;
+      }
+    });
+
+    if (!hasGlobals) {
+      const message = 'Elementor document does not expose any widget-level `__globals__` bindings.';
+      warnings.push(message);
+      findings.push(buildFinding('warning', 'missing_global_bindings', message));
+    }
+    if (!hasTextColor) {
+      const message = 'Elementor document does not expose text color bindings such as `text_color` or `title_color`.';
+      warnings.push(message);
+      findings.push(buildFinding('warning', 'missing_text_color_binding', message));
+    }
+    if (!hasGlobalTypography) {
+      const message = 'Elementor document does not expose obvious typography bindings.';
+      warnings.push(message);
+      findings.push(buildFinding('warning', 'missing_typography_binding', message));
+    }
+    if (audit.summary.container_count > 0 && !hasHeroBackground) {
+      const message = 'Elementor document has container structure but no obvious background-image settings were found.';
+      warnings.push(message);
+      findings.push(buildFinding('warning', 'missing_container_background', message));
+    }
   }
 
   return {
     ok: issues.length === 0,
     issues,
-    warnings
+    warnings,
+    findings
   };
 }
 

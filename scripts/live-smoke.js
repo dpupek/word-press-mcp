@@ -5,9 +5,14 @@ import { createWpClient } from '../src/wp-client.js';
 import {
   cloneElementorDocumentWorkflow,
   cleanupElementorKitWorkflow,
+  getPostUrlsWorkflow,
+  getSiteCapabilitiesWorkflow,
   importElementorDocumentMediaWorkflow,
+  inspectElementorDocumentWorkflow,
+  publishAndVerifyElementorPageWorkflow,
   restoreElementorCandidateWorkflow
 } from '../src/workflows.js';
+import { findElementById, parseElementorDocument } from '../src/elementor-document.js';
 
 function requireAuth(config) {
   if (hasAuth(config)) return;
@@ -22,12 +27,25 @@ function safeError(error, context) {
   return translateWpError(error, context);
 }
 
+function findFirstWidgetIdByType(elements, widgetType) {
+  if (!Array.isArray(elements)) return null;
+  for (const element of elements) {
+    if (element?.elType === 'widget' && element?.widgetType === widgetType && element?.id) {
+      return element.id;
+    }
+    const childMatch = findFirstWidgetIdByType(element?.elements, widgetType);
+    if (childMatch) return childMatch;
+  }
+  return null;
+}
+
 const config = getConfig();
 requireAuth(config);
 
 const logger = createLogger(config);
 const client = createWpClient(config, logger);
 const stamp = Date.now();
+const smokeElementorSourcePageId = Number(process.env.WORDPRESS_MCP_SMOKE_ELEMENTOR_SOURCE_PAGE_ID || 0) || null;
 
 const createPostOperation = buildOperation({
   toolName: 'wp_v2_posts_create',
@@ -45,6 +63,18 @@ const createPostOperation = buildOperation({
 const deletePostOperation = buildOperation({
   toolName: 'wp_v2_posts_id_delete',
   route: '/wp/v2/posts/(?P<id>[\\d]+)',
+  method: 'DELETE',
+  pathParams: ['id'],
+  requestStyle: 'query',
+  args: [
+    { name: 'id', location: 'path' },
+    { name: 'force', location: 'query' }
+  ]
+});
+
+const deletePageOperation = buildOperation({
+  toolName: 'wp_v2_pages_id_delete',
+  route: '/wp/v2/pages/(?P<id>[\\d]+)',
   method: 'DELETE',
   pathParams: ['id'],
   requestStyle: 'query',
@@ -94,8 +124,17 @@ const result = {
 
 let publishedPostId = null;
 let templateCloneId = null;
+let publishedPageCloneId = null;
 
 try {
+  const siteCapabilities = await getSiteCapabilitiesWorkflow(client, config);
+  result.steps.push({
+    step: 'site_capabilities',
+    ok: true,
+    capabilities: siteCapabilities.capabilities,
+    blockedRoutes: siteCapabilities.blockedRoutes
+  });
+
   const publishedPost = await client.execute(createPostOperation, {
     title: `Codex Live Smoke Post ${stamp}`,
     status: 'publish',
@@ -227,6 +266,63 @@ try {
       })
     });
   }
+
+  if (smokeElementorSourcePageId) {
+    const pageClone = await cloneElementorDocumentWorkflow(client, {
+      mode: 'execute',
+      confirm: true,
+      sourcePostType: 'pages',
+      sourcePostId: smokeElementorSourcePageId,
+      targetPostType: 'pages',
+      title: `Codex Elementor Smoke Page ${stamp}`,
+      status: 'publish'
+    });
+    publishedPageCloneId = pageClone.clone?.post?.id;
+    const clonedInspection = await inspectElementorDocumentWorkflow(client, {
+      postType: 'pages',
+      postId: publishedPageCloneId
+    });
+    const parsed = parseElementorDocument(clonedInspection.document?.meta?._elementor_data);
+    const headingId = findElementById(parsed.elements, 'heading')?.element?.id || findFirstWidgetIdByType(parsed.elements, 'heading');
+
+    if (!headingId) {
+      throw new Error('Optional Elementor page smoke could not find a heading widget to patch.');
+    }
+
+    const pageUrls = await getPostUrlsWorkflow(client, config, {
+      postType: 'pages',
+      postId: publishedPageCloneId
+    });
+    const pageLiveUrl = pageUrls.urls.publicUrl || pageUrls.urls.previewUrl;
+    const widgetTitle = `Codex Elementor Smoke Heading ${stamp}`;
+    const publishVerify = await publishAndVerifyElementorPageWorkflow(client, config, {
+      mode: 'execute',
+      confirm: true,
+      postType: 'pages',
+      postId: publishedPageCloneId,
+      update: {
+        type: 'widget',
+        widgetId: headingId,
+        expectedWidgetType: 'heading',
+        settingsPatch: {
+          title: widgetTitle
+        }
+      },
+      purgeCache: true,
+      liveUrl: pageLiveUrl,
+      expectedText: [widgetTitle]
+    });
+    result.steps.push({
+      step: 'publish_and_verify_elementor_page',
+      ok: publishVerify.ok,
+      pageId: publishedPageCloneId,
+      liveUrl: pageLiveUrl,
+      storedUpdated: publishVerify.storedUpdated,
+      cachePurged: publishVerify.cachePurged,
+      liveUpdated: publishVerify.liveUpdated,
+      verification: publishVerify.verification
+    });
+  }
 } catch (error) {
   result.ok = false;
   result.error = safeError(error);
@@ -270,6 +366,20 @@ try {
           route: '/wp/v2/elementor_library/(?P<id>[\\d]+)',
           method: 'DELETE'
         })
+      });
+    }
+  }
+
+  if (publishedPageCloneId) {
+    try {
+      await client.execute(deletePageOperation, { id: publishedPageCloneId, force: true });
+      cleanup.push({ target: 'published_page', id: publishedPageCloneId, ok: true });
+    } catch (error) {
+      cleanup.push({
+        target: 'published_page',
+        id: publishedPageCloneId,
+        ok: false,
+        error: safeError(error, { route: deletePageOperation.route, method: deletePageOperation.method })
       });
     }
   }

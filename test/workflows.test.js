@@ -8,13 +8,18 @@ import {
   draftOrUpdatePostWorkflow,
   diffElementorDocumentsWorkflow,
   getPostUrlsWorkflow,
+  getLiveRenderStateWorkflow,
+  getSiteCapabilitiesWorkflow,
   getSiteIdentityWorkflow,
   importElementorDocumentMediaWorkflow,
   inspectElementorHistoryWorkflow,
   listMenuStructureWorkflow,
   nexportBlogPostWorkflow,
+  patchElementorDocumentWorkflow,
+  publishAndVerifyElementorPageWorkflow,
   reorderMenuItemsWorkflow,
   restoreElementorCandidateWorkflow,
+  updateElementorWidgetWorkflow,
   upsertMenuItemWorkflow,
   validateElementorDocumentWorkflow
 } from '../src/workflows.js';
@@ -51,6 +56,160 @@ const fakeClient = {
 const fakeConfig = {
   siteUrl: 'https://example.com'
 };
+
+function createMutableElementorClient() {
+  const state = {
+    id: 44,
+    type: 'page',
+    status: 'draft',
+    slug: 'sample-page',
+    link: 'https://example.com/sample-page/',
+    title: { raw: 'Sample Page', rendered: 'Sample Page' },
+    content: { raw: '<p>Stored body</p>', rendered: '<div>REST body</div>' },
+    excerpt: { raw: 'Stored excerpt', rendered: 'Stored excerpt' },
+    template: 'elementor_theme',
+    meta: {
+      _elementor_edit_mode: 'builder',
+      _elementor_template_type: 'wp-page',
+      _elementor_data: JSON.stringify([
+        {
+          id: 'hero',
+          elType: 'container',
+          settings: { background_background: 'classic' },
+          elements: [
+            {
+              id: 'heading',
+              elType: 'widget',
+              widgetType: 'heading',
+              settings: {
+                title: 'Hero Title',
+                title_color: '#111111',
+                __globals__: { title_color: 'globals/colors?id=primary' }
+              },
+              elements: []
+            }
+          ]
+        }
+      ]),
+      _elementor_page_settings: JSON.stringify({ hide_title: 'yes' }),
+      _elementor_conditions: JSON.stringify([])
+    }
+  };
+  const calls = [];
+
+  return {
+    calls,
+    state,
+    async healthCheck() {
+      return {
+        siteUrl: 'https://example.com',
+        routeCount: 501,
+        namespaces: ['wp/v2', 'elementor/v1', 'wp-site-health/v1'],
+        auth: { ok: true, statusCode: 200, user: 'admin' }
+      };
+    },
+    async execute(operation, payload) {
+      calls.push({ operation, payload });
+
+      if (operation.route === '/') {
+        return {
+          data: {
+            name: 'Example Site',
+            home: 'https://example.com',
+            routes: {
+              '/wp/v2/pages/(?P<id>[\\d]+)': {},
+              '/wp/v2/settings': {},
+              '/wp/v2/users/me': {},
+              '/elementor/v1/cache': {},
+              '/elementor/v1/post': {},
+              '/elementor/v1/site-editor/templates': {},
+              '/wp-site-health/v1/tests/page-cache': {}
+            }
+          }
+        };
+      }
+
+      if (operation.route === '/wp/v2/settings') {
+        return {
+          data: {
+            title: 'Example Site',
+            description: 'Example description',
+            url: 'https://example.com'
+          }
+        };
+      }
+
+      if (operation.route === '/wp/v2/users/me') {
+        return {
+          data: {
+            id: 7,
+            slug: 'admin',
+            name: 'Admin User'
+          }
+        };
+      }
+
+      if (operation.toolName === 'elementor_v1_cache_delete') {
+        return {
+          data: {
+            success: true
+          }
+        };
+      }
+
+      if (operation.route === '/wp-site-health/v1/tests/page-cache') {
+        return {
+          data: {
+            label: 'Page cache is working'
+          }
+        };
+      }
+
+      if (operation.route === '/elementor/v1/post') {
+        throw {
+          kind: 'permission_error',
+          statusCode: 403,
+          responseBody: { code: 'rest_forbidden', message: 'Forbidden' }
+        };
+      }
+
+      if (operation.route === '/elementor/v1/site-editor/templates') {
+        return {
+          data: [
+            {
+              id: 'template-1',
+              title: 'Header Template'
+            }
+          ]
+        };
+      }
+
+      if (operation.route === '/wp/v2/pages/(?P<id>[\\d]+)' && operation.method === 'GET') {
+        return {
+          requestUrl: `https://example.com/wp-json/wp/v2/pages/${payload.id}?context=edit`,
+          data: JSON.parse(JSON.stringify(state))
+        };
+      }
+
+      if (operation.route === '/wp/v2/pages/(?P<id>[\\d]+)' && operation.method === 'POST') {
+        if (payload.title) {
+          state.title = { raw: payload.title, rendered: payload.title };
+        }
+        if (payload.content) {
+          state.content.raw = payload.content;
+        }
+        if (payload.meta) {
+          state.meta = { ...state.meta, ...payload.meta };
+        }
+        return {
+          data: JSON.parse(JSON.stringify(state))
+        };
+      }
+
+      throw new Error(`Unexpected mutable Elementor operation: ${operation.toolName} ${operation.route}`);
+    }
+  };
+}
 
 const fakeMenuClient = {
   nextCreatedMenuItemId: 200,
@@ -344,6 +503,120 @@ test('getSiteIdentityWorkflow: does not claim classic menus when routes are abse
   assert.equal(result.capabilities.hasClassicMenus, false);
 });
 
+test('getSiteCapabilitiesWorkflow: reports route availability, active capability probes, and blocked routes', async () => {
+  // Arrange
+  const capabilityClient = createMutableElementorClient();
+
+  // Assert (initial)
+  assert.equal(capabilityClient.calls.length, 0);
+
+  // Act
+  const result = await getSiteCapabilitiesWorkflow(capabilityClient, fakeConfig);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_get_site_capabilities');
+  assert.equal(result.capabilities.canReadEditContext, true);
+  assert.equal(result.capabilities.canPurgeElementorCache, true);
+  assert.equal(result.capabilities.canUseElementorPostEndpoint, false);
+  assert.equal(result.capabilities.canManageElementorTemplates, true);
+  assert.ok(result.blockedRoutes.some((route) => route.route === '/elementor/v1/post'));
+});
+
+test('getSiteCapabilitiesWorkflow: does not claim page writes when the write probe is forbidden', async () => {
+  // Arrange
+  const readOnlyClient = createMutableElementorClient();
+  const originalExecute = readOnlyClient.execute.bind(readOnlyClient);
+  readOnlyClient.execute = async (operation, payload) => {
+    if (operation.route === '/wp/v2/pages/(?P<id>[\\d]+)' && operation.method === 'POST') {
+      throw {
+        kind: 'permission_error',
+        statusCode: 403,
+        responseBody: { code: 'rest_forbidden', message: 'Forbidden' }
+      };
+    }
+    return originalExecute(operation, payload);
+  };
+
+  // Assert (initial)
+  assert.equal(readOnlyClient.calls.length, 0);
+
+  // Act
+  const result = await getSiteCapabilitiesWorkflow(readOnlyClient, fakeConfig);
+
+  // Assert
+  assert.equal(result.capabilities.canWritePages, false);
+  assert.ok(result.blockedRoutes.some((route) => route.route === '/wp/v2/pages/(?P<id>[\\d]+)'));
+});
+
+test('getLiveRenderStateWorkflow: compares stored, REST-rendered, and live frontend layers', async () => {
+  // Arrange
+  const capabilityClient = createMutableElementorClient();
+  const args = {
+    postId: 44,
+    postType: 'pages',
+    liveUrl: 'https://example.com/sample-page/',
+    expectedText: ['Hero Title'],
+    forbiddenText: ['Legacy CTA']
+  };
+  const liveReader = {
+    async read(url) {
+      return {
+        url,
+        html: '<html><head><link rel="stylesheet" href="/wp-content/uploads/sites/3/elementor/css/post-44.css?ver=1"></head><body><h1>Hero Title</h1></body></html>'
+      };
+    }
+  };
+
+  // Assert (initial)
+  assert.equal(args.postId, 44);
+
+  // Act
+  const result = await getLiveRenderStateWorkflow(capabilityClient, fakeConfig, args, liveReader);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_get_live_render_state');
+  assert.ok(result.stored.elementorDataHash);
+  assert.ok(result.restRendered.htmlHash);
+  assert.ok(result.liveFrontend.htmlHash);
+  assert.equal(result.stalenessAssessment.restVsStoredMismatch, false);
+  assert.equal(result.stalenessAssessment.liveVsStoredMismatch, true);
+  assert.equal(result.stalenessAssessment.likelyCacheIssue, true);
+  assert.equal(result.generatedCssUrls.length, 1);
+});
+
+test('getLiveRenderStateWorkflow: does not flag a mismatch when raw, REST, and live layers contain the same markers with different markup', async () => {
+  // Arrange
+  const capabilityClient = createMutableElementorClient();
+  capabilityClient.state.content.raw = '<h1>Hero Title</h1><p>Stored body</p>';
+  capabilityClient.state.content.rendered = '<div class=\"entry-content\"><h1>Hero Title</h1><p>Stored body</p></div>';
+  const args = {
+    postId: 44,
+    postType: 'pages',
+    liveUrl: 'https://example.com/sample-page/',
+    expectedText: ['Hero Title', 'Stored body'],
+    forbiddenText: ['Legacy CTA']
+  };
+  const liveReader = {
+    async read(url) {
+      return {
+        url,
+        html: '<html><body><main><h1>Hero Title</h1><p>Stored body</p></main></body></html>'
+      };
+    }
+  };
+
+  // Assert (initial)
+  assert.match(capabilityClient.state.content.raw, /Hero Title/);
+
+  // Act
+  const result = await getLiveRenderStateWorkflow(capabilityClient, fakeConfig, args, liveReader);
+
+  // Assert
+  assert.equal(result.stalenessAssessment.restVsStoredMismatch, false);
+  assert.equal(result.stalenessAssessment.liveVsStoredMismatch, false);
+  assert.equal(result.stalenessAssessment.likelyCacheIssue, false);
+});
+
 test('listMenuStructureWorkflow: returns a nested menu tree', async () => {
   // Arrange
   const args = { menuId: 7 };
@@ -619,6 +892,117 @@ test('validateElementorDocumentWorkflow: returns validation envelope for inspect
   assert.equal(result.workflow, 'workflow_validate_elementor_document');
   assert.ok(Array.isArray(result.validation.issues));
   assert.ok(Array.isArray(result.validation.warnings));
+  assert.ok(Array.isArray(result.validation.findings));
+});
+
+test('updateElementorWidgetWorkflow: patches one widget and returns before and after settings', async () => {
+  // Arrange
+  const capabilityClient = createMutableElementorClient();
+  const args = {
+    mode: 'execute',
+    confirm: true,
+    postId: 44,
+    postType: 'pages',
+    widgetId: 'heading',
+    expectedWidgetType: 'heading',
+    settingsPatch: {
+      title: 'Updated Hero Title',
+      title_color: '#C58A1E'
+    }
+  };
+
+  // Assert (initial)
+  assert.equal(args.confirm, true);
+
+  // Act
+  const result = await updateElementorWidgetWorkflow(capabilityClient, args, fakeConfig);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_update_elementor_widget');
+  assert.equal(result.before.title, 'Hero Title');
+  assert.equal(result.after.title, 'Updated Hero Title');
+  assert.equal(result.after.title_color, '#C58A1E');
+  assert.equal(result.storedUpdated, true);
+});
+
+test('patchElementorDocumentWorkflow: applies ordered document operations and returns a structural diff summary', async () => {
+  // Arrange
+  const capabilityClient = createMutableElementorClient();
+  const args = {
+    mode: 'execute',
+    confirm: true,
+    postId: 44,
+    postType: 'pages',
+    operations: [
+      {
+        op: 'insertAfter',
+        targetId: 'heading',
+        element: {
+          id: 'cta',
+          elType: 'widget',
+          widgetType: 'button',
+          settings: { text: 'Contact Us', link: { url: '/contact' } },
+          elements: []
+        }
+      }
+    ]
+  };
+
+  // Assert (initial)
+  assert.equal(args.operations.length, 1);
+
+  // Act
+  const result = await patchElementorDocumentWorkflow(capabilityClient, args, fakeConfig);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_patch_elementor_document');
+  assert.equal(result.diffSummary.widgetsAdded, 1);
+  assert.equal(result.storedUpdated, true);
+  assert.ok(Array.isArray(result.warnings));
+});
+
+test('publishAndVerifyElementorPageWorkflow: reports live verification failure separately from stored update success', async () => {
+  // Arrange
+  const capabilityClient = createMutableElementorClient();
+  const args = {
+    mode: 'execute',
+    confirm: true,
+    postId: 44,
+    postType: 'pages',
+    update: {
+      type: 'widget',
+      widgetId: 'heading',
+      expectedWidgetType: 'heading',
+      settingsPatch: {
+        title: 'Updated Hero Title'
+      }
+    },
+    purgeCache: true,
+    liveUrl: 'https://example.com/sample-page/',
+    expectedText: ['Updated Hero Title'],
+    forbiddenText: ['Legacy CTA']
+  };
+  const liveReader = {
+    async read(url) {
+      return {
+        url,
+        html: '<html><body><h1>Updated Hero Title</h1><p>Legacy CTA</p></body></html>'
+      };
+    }
+  };
+
+  // Assert (initial)
+  assert.equal(args.purgeCache, true);
+
+  // Act
+  const result = await publishAndVerifyElementorPageWorkflow(capabilityClient, fakeConfig, args, liveReader);
+
+  // Assert
+  assert.equal(result.workflow, 'workflow_publish_and_verify_elementor_page');
+  assert.equal(result.storedUpdated, true);
+  assert.equal(result.cachePurged, true);
+  assert.equal(result.liveUpdated, false);
+  assert.deepEqual(result.verification.forbiddenTextFound, ['Legacy CTA']);
 });
 
 test('diffElementorDocumentsWorkflow: compares source against revision target', async () => {

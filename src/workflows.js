@@ -1,5 +1,12 @@
 import fs from 'node:fs';
 import { diffElementorAudits, extractElementorAudit, validateElementorAudit } from './elementor.js';
+import {
+  applyElementorDocumentOperations,
+  applyWidgetSettingsPatch,
+  parseElementorDocument,
+  summarizeElementorStructuralDiff
+} from './elementor-document.js';
+import { createLiveRenderReader, extractGeneratedCssUrls, hashContent, inspectRenderedHtml } from './live-render.js';
 
 function normalizeTerms(input) {
   if (!input) return [];
@@ -108,6 +115,136 @@ function buildWpGetOperation(postType, route, pathParams) {
     ],
     pathParams,
     requestStyle: 'query'
+  };
+}
+
+function buildWpUpdateOperation(postType) {
+  return {
+    toolName: `wp_v2_${postType}_id_update`,
+    route: `/wp/v2/${postType}/(?P<id>[\\d]+)`,
+    method: 'POST',
+    args: [
+      { name: 'id', location: 'path' },
+      { name: 'title', location: 'body' },
+      { name: 'status', location: 'body' },
+      { name: 'content', location: 'body' },
+      { name: 'excerpt', location: 'body' },
+      { name: 'template', location: 'body' },
+      { name: 'meta', location: 'body' }
+    ],
+    pathParams: ['id'],
+    requestStyle: 'json'
+  };
+}
+
+function buildRootIndexOperation() {
+  return {
+    toolName: 'root_index_get',
+    route: '/',
+    method: 'GET',
+    args: [],
+    pathParams: [],
+    requestStyle: 'query'
+  };
+}
+
+function buildSettingsOperation() {
+  return {
+    toolName: 'wp_v2_settings_list',
+    route: '/wp/v2/settings',
+    method: 'GET',
+    args: [],
+    pathParams: [],
+    requestStyle: 'query'
+  };
+}
+
+function buildCurrentUserOperation() {
+  return {
+    toolName: 'wp_v2_users_me_get',
+    route: '/wp/v2/users/me',
+    method: 'GET',
+    args: [{ name: 'context', location: 'query' }],
+    pathParams: [],
+    requestStyle: 'query'
+  };
+}
+
+function buildElementorCacheDeleteOperation() {
+  return {
+    toolName: 'elementor_v1_cache_delete',
+    route: '/elementor/v1/cache',
+    method: 'DELETE',
+    args: [],
+    pathParams: [],
+    requestStyle: 'query'
+  };
+}
+
+function routeExists(routes, prefix) {
+  return Object.keys(routes || {}).some((route) => route.startsWith(prefix));
+}
+
+function buildBlockedRoute(route, error) {
+  return {
+    route,
+    status: error?.statusCode || null,
+    code: error?.wpCode || error?.responseBody?.code || error?.code || error?.kind || 'unknown',
+    message: error?.responseBody?.message || error?.message || 'Probe failed.'
+  };
+}
+
+function toArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function sameStringSet(left, right) {
+  const leftValues = uniqueStrings(Array.isArray(left) ? left : []).sort();
+  const rightValues = uniqueStrings(Array.isArray(right) ? right : []).sort();
+  if (leftValues.length !== rightValues.length) return false;
+  return leftValues.every((value, index) => value === rightValues[index]);
+}
+
+function buildElementorUpdatePayload(document, nextDataString) {
+  return {
+    title: document?.title?.raw || document?.title?.rendered || '',
+    status: document?.status || 'draft',
+    content: document?.content?.raw || document?.content?.rendered || '',
+    excerpt: document?.excerpt?.raw || document?.excerpt?.rendered || '',
+    template: document?.template || undefined,
+    meta: {
+      ...(document?.meta || {}),
+      _elementor_data: nextDataString
+    }
+  };
+}
+
+function buildMutationWarnings(validation, diffSummary) {
+  return uniqueStrings([
+    ...toArray(validation?.warnings),
+    diffSummary?.widgetsRemoved > 0 ? `The patch removed ${diffSummary.widgetsRemoved} widget(s).` : null,
+    diffSummary?.containersRemoved > 0 ? `The patch removed ${diffSummary.containersRemoved} container(s).` : null,
+    Array.isArray(diffSummary?.widgetTypesChanged) && diffSummary.widgetTypesChanged.length > 0
+      ? `The patch changed widget types for ${diffSummary.widgetTypesChanged.length} stable element id(s).`
+      : null
+  ]);
+}
+
+function isVerificationSuccessful(result, expectedText = [], forbiddenText = []) {
+  const expected = toArray(expectedText);
+  const forbidden = toArray(forbiddenText);
+  return result.expectedTextFound.length === expected.length && result.forbiddenTextFound.length === 0 && forbidden.length >= 0;
+}
+
+async function purgeElementorCache(client) {
+  const result = await client.execute(buildElementorCacheDeleteOperation(), {});
+  return {
+    ok: true,
+    result: result.data
   };
 }
 
@@ -264,30 +401,9 @@ function summarizeCapabilities({ health, settingsContextUsed, currentUser, route
 
 export async function getSiteIdentityWorkflow(client, config) {
   const health = await client.healthCheck();
-  const rootIndexOperation = {
-    toolName: 'root_index_get',
-    route: '/',
-    method: 'GET',
-    args: [],
-    pathParams: [],
-    requestStyle: 'query'
-  };
-  const settingsOperation = {
-    toolName: 'wp_v2_settings_list',
-    route: '/wp/v2/settings',
-    method: 'GET',
-    args: [],
-    pathParams: [],
-    requestStyle: 'query'
-  };
-  const currentUserOperation = {
-    toolName: 'wp_v2_users_me_get',
-    route: '/wp/v2/users/me',
-    method: 'GET',
-    args: [{ name: 'context', location: 'query' }],
-    pathParams: [],
-    requestStyle: 'query'
-  };
+  const rootIndexOperation = buildRootIndexOperation();
+  const settingsOperation = buildSettingsOperation();
+  const currentUserOperation = buildCurrentUserOperation();
 
   const rootIndexResult = await client.execute(rootIndexOperation, {});
   let settingsResult = null;
@@ -358,6 +474,164 @@ export async function getSiteIdentityWorkflow(client, config) {
         ? 'Authentication appears healthy, but users/me identity details were not available for this account or route.'
         : null
     ].filter(Boolean)
+  };
+}
+
+export async function getSiteCapabilitiesWorkflow(client, config) {
+  const rootIndexResult = await client.execute(buildRootIndexOperation(), {});
+  const routes = rootIndexResult.data?.routes || {};
+  const blockedRoutes = [];
+
+  let canReadEditContext = false;
+  try {
+    const settingsResult = await executeWithEditFallback(client, buildSettingsOperation(), {});
+    canReadEditContext = settingsResult.contextUsed === 'edit';
+  } catch (error) {
+    blockedRoutes.push(buildBlockedRoute('/wp/v2/settings', error));
+  }
+
+  async function safeProbe(operation, payload = {}) {
+    try {
+      await client.execute(operation, payload);
+      return true;
+    } catch (error) {
+      blockedRoutes.push(buildBlockedRoute(operation.route, error));
+      return false;
+    }
+  }
+
+  async function safeWriteProbe(operation, payload = {}) {
+    try {
+      await client.execute(operation, payload);
+      return true;
+    } catch (error) {
+      if (error?.kind === 'permission_error' || error?.kind === 'auth_error') {
+        blockedRoutes.push(buildBlockedRoute(operation.route, error));
+        return false;
+      }
+
+      return true;
+    }
+  }
+
+  const canPurgeElementorCache = routeExists(routes, '/elementor/v1/cache')
+    ? await safeProbe(buildElementorCacheDeleteOperation(), {})
+    : false;
+  const canUseElementorPostEndpoint = routeExists(routes, '/elementor/v1/post')
+    ? await safeProbe(
+        {
+          toolName: 'elementor_v1_post_list',
+          route: '/elementor/v1/post',
+          method: 'GET',
+          args: [],
+          pathParams: [],
+          requestStyle: 'query'
+        },
+        {}
+      )
+    : false;
+  const canReadPageCacheHealth = routeExists(routes, '/wp-site-health/v1/tests/page-cache')
+    ? await safeProbe(
+        {
+          toolName: 'wp_site_health_v1_tests_page_cache_list',
+          route: '/wp-site-health/v1/tests/page-cache',
+          method: 'GET',
+          args: [],
+          pathParams: [],
+          requestStyle: 'query'
+        },
+        {}
+      )
+    : false;
+  const canManageElementorTemplates = routeExists(routes, '/elementor/v1/site-editor/templates')
+    ? await safeProbe(
+        {
+          toolName: 'elementor_v1_site_editor_templates_list',
+          route: '/elementor/v1/site-editor/templates',
+          method: 'GET',
+          args: [],
+          pathParams: [],
+          requestStyle: 'query'
+        },
+        {}
+      )
+    : false;
+  const canWritePages = routeExists(routes, '/wp/v2/pages')
+    ? await safeWriteProbe(buildWpUpdateOperation('pages'), {
+        id: 0,
+        title: 'Capability probe'
+      })
+    : false;
+
+  return {
+    ok: true,
+    workflow: 'workflow_get_site_capabilities',
+    siteUrl: config.siteUrl,
+    capabilities: {
+      canReadEditContext,
+      canWritePages,
+      canPurgeElementorCache,
+      canUseElementorPostEndpoint,
+      canReadPageCacheHealth,
+      canManageElementorTemplates
+    },
+    blockedRoutes
+  };
+}
+
+export async function getLiveRenderStateWorkflow(client, config, args, liveReader = createLiveRenderReader(config)) {
+  const inspection = await inspectElementorDocumentWorkflow(client, {
+    postType: args.postType,
+    postId: args.postId
+  });
+  const document = inspection.document || {};
+  const liveUrl = args.liveUrl || document.link || buildPreviewUrl({ siteUrl: config.siteUrl, postType: args.postType, document });
+  const restHtml = document?.content?.rendered || '';
+  const storedRaw = document?.content?.raw || '';
+  const liveResult = liveUrl ? await liveReader.read(liveUrl) : { url: null, html: '' };
+  const expectedText = toArray(args.expectedText);
+  const forbiddenText = toArray(args.forbiddenText);
+  const storedRendered = inspectRenderedHtml(storedRaw, { expectedText, forbiddenText });
+  const restRendered = inspectRenderedHtml(restHtml, { expectedText, forbiddenText });
+  const liveFrontend = inspectRenderedHtml(liveResult.html, { expectedText, forbiddenText });
+  const storedRawHash = hashContent(storedRaw);
+  const markerComparisonEnabled = expectedText.length > 0 || forbiddenText.length > 0;
+  const restVsStoredMismatch =
+    markerComparisonEnabled &&
+    (!sameStringSet(storedRendered.expectedTextFound, restRendered.expectedTextFound) ||
+      !sameStringSet(storedRendered.forbiddenTextFound, restRendered.forbiddenTextFound));
+  const liveVsStoredMismatch =
+    markerComparisonEnabled &&
+    (!sameStringSet(storedRendered.expectedTextFound, liveFrontend.expectedTextFound) ||
+      !sameStringSet(storedRendered.forbiddenTextFound, liveFrontend.forbiddenTextFound));
+
+  return {
+    ok: true,
+    workflow: 'workflow_get_live_render_state',
+    postId: args.postId,
+    postType: args.postType,
+    stored: {
+      contentRawHash: storedRawHash,
+      elementorDataHash: hashContent(document?.meta?._elementor_data || ''),
+      elementorSummary: inspection.elementor.summary
+    },
+    restRendered: {
+      htmlHash: restRendered.htmlHash,
+      expectedTextFound: restRendered.expectedTextFound,
+      forbiddenTextFound: restRendered.forbiddenTextFound
+    },
+    liveFrontend: {
+      url: liveUrl,
+      htmlHash: liveFrontend.htmlHash,
+      expectedTextFound: liveFrontend.expectedTextFound,
+      forbiddenTextFound: liveFrontend.forbiddenTextFound
+    },
+    generatedCssUrls: extractGeneratedCssUrls(liveResult.html, liveUrl || config.siteUrl),
+    stalenessAssessment: {
+      restVsStoredMismatch,
+      liveVsStoredMismatch,
+      likelyCacheIssue: markerComparisonEnabled && !restVsStoredMismatch && liveVsStoredMismatch
+    }
   };
 }
 
@@ -1030,6 +1304,262 @@ export async function validateElementorDocumentWorkflow(client, args) {
     },
     elementor: inspection.elementor,
     validation: validateElementorAudit(inspection.elementor)
+  };
+}
+
+export async function updateElementorWidgetWorkflow(client, args, config = { siteUrl: '' }, liveReader = createLiveRenderReader(config)) {
+  const mode = args.mode || 'plan';
+  const steps = [
+    'Inspect the target document and parse `_elementor_data` into a mutable element tree.',
+    'Patch the requested widget settings without rebuilding the full Elementor document.',
+    'Write the updated Elementor document back to WordPress, then optionally purge cache and verify the live frontend.'
+  ];
+
+  if (mode === 'plan') {
+    return buildWorkflowPlan('workflow_update_elementor_widget', steps, [
+      `Target document: ${args.postType} ${args.postId}.`,
+      `Target widget: ${args.widgetId}.`
+    ]);
+  }
+
+  requireWorkflowConfirmation('workflow_update_elementor_widget', args);
+  const inspection = await inspectElementorDocumentWorkflow(client, {
+    postType: args.postType,
+    postId: args.postId
+  });
+  const parsed = parseElementorDocument(inspection.document?.meta?._elementor_data);
+  if (!parsed.ok) {
+    throw {
+      kind: 'validation_error',
+      message: 'The target Elementor document could not be parsed before widget update.',
+      details: { postId: args.postId, postType: args.postType, error: parsed.error }
+    };
+  }
+
+  const patchResult = applyWidgetSettingsPatch(parsed.elements, {
+    widgetId: args.widgetId,
+    expectedWidgetType: args.expectedWidgetType,
+    settingsPatch: args.settingsPatch
+  });
+
+  const updateResult = await client.execute(buildWpUpdateOperation(args.postType), {
+    id: args.postId,
+    ...buildElementorUpdatePayload(inspection.document, JSON.stringify(patchResult.elements))
+  });
+  const afterInspection = await inspectElementorDocumentWorkflow(client, {
+    postType: args.postType,
+    postId: args.postId
+  });
+  const afterParsed = parseElementorDocument(afterInspection.document?.meta?._elementor_data);
+  const afterValidation = validateElementorAudit(afterInspection.elementor);
+  const diffSummary = summarizeElementorStructuralDiff(parsed.elements, afterParsed.elements);
+
+  let cachePurged = false;
+  if (args.purgeCache) {
+    await purgeElementorCache(client);
+    cachePurged = true;
+  }
+
+  let liveState = null;
+  let liveVerified = false;
+  if (args.verifyLive) {
+    liveState = await getLiveRenderStateWorkflow(
+      client,
+      config,
+      {
+        postId: args.postId,
+        postType: args.postType,
+        liveUrl: args.liveUrl,
+        expectedText: toArray(args.expectedText).length > 0 ? args.expectedText : [patchResult.after.title].filter(Boolean),
+        forbiddenText: args.forbiddenText || []
+      },
+      liveReader
+    );
+    liveVerified = isVerificationSuccessful(liveState.liveFrontend, args.expectedText || [patchResult.after.title].filter(Boolean), args.forbiddenText || []);
+  }
+
+  return {
+    ok: true,
+    mode,
+    workflow: 'workflow_update_elementor_widget',
+    postId: args.postId,
+    postType: args.postType,
+    widgetId: args.widgetId,
+    widgetType: patchResult.widget?.widgetType || null,
+    storedUpdated: true,
+    cachePurged,
+    liveVerified,
+    before: patchResult.before,
+    after: patchResult.after,
+    diffSummary,
+    warnings: buildMutationWarnings(afterValidation, diffSummary),
+    writeResult: updateResult.data,
+    validation: afterValidation,
+    liveState
+  };
+}
+
+export async function patchElementorDocumentWorkflow(client, args, config = { siteUrl: '' }, liveReader = createLiveRenderReader(config)) {
+  const mode = args.mode || 'plan';
+  const steps = [
+    'Inspect the target document and parse `_elementor_data` into a mutable element tree.',
+    'Apply the requested ordered tree operations against stable Elementor element ids.',
+    'Write the updated document back to WordPress, then optionally purge cache and verify the live frontend.'
+  ];
+
+  if (mode === 'plan') {
+    return buildWorkflowPlan('workflow_patch_elementor_document', steps, [
+      `Target document: ${args.postType} ${args.postId}.`,
+      `Operations requested: ${toArray(args.operations).length}.`
+    ]);
+  }
+
+  requireWorkflowConfirmation('workflow_patch_elementor_document', args);
+  const inspection = await inspectElementorDocumentWorkflow(client, {
+    postType: args.postType,
+    postId: args.postId
+  });
+  const parsed = parseElementorDocument(inspection.document?.meta?._elementor_data);
+  if (!parsed.ok) {
+    throw {
+      kind: 'validation_error',
+      message: 'The target Elementor document could not be parsed before patching.',
+      details: { postId: args.postId, postType: args.postType, error: parsed.error }
+    };
+  }
+
+  const nextElements = applyElementorDocumentOperations(parsed.elements, args.operations);
+  const updateResult = await client.execute(buildWpUpdateOperation(args.postType), {
+    id: args.postId,
+    ...buildElementorUpdatePayload(inspection.document, JSON.stringify(nextElements))
+  });
+  const afterInspection = await inspectElementorDocumentWorkflow(client, {
+    postType: args.postType,
+    postId: args.postId
+  });
+  const afterParsed = parseElementorDocument(afterInspection.document?.meta?._elementor_data);
+  const afterValidation = validateElementorAudit(afterInspection.elementor);
+  const diffSummary = summarizeElementorStructuralDiff(parsed.elements, afterParsed.elements);
+
+  let cachePurged = false;
+  if (args.purgeCache) {
+    await purgeElementorCache(client);
+    cachePurged = true;
+  }
+
+  let liveState = null;
+  let liveVerified = false;
+  if (args.verifyLive) {
+    liveState = await getLiveRenderStateWorkflow(
+      client,
+      config,
+      {
+        postId: args.postId,
+        postType: args.postType,
+        liveUrl: args.liveUrl,
+        expectedText: args.expectedText || [],
+        forbiddenText: args.forbiddenText || []
+      },
+      liveReader
+    );
+    liveVerified = isVerificationSuccessful(liveState.liveFrontend, args.expectedText || [], args.forbiddenText || []);
+  }
+
+  return {
+    ok: true,
+    mode,
+    workflow: 'workflow_patch_elementor_document',
+    postId: args.postId,
+    postType: args.postType,
+    storedUpdated: true,
+    cachePurged,
+    liveVerified,
+    diffSummary,
+    warnings: buildMutationWarnings(afterValidation, diffSummary),
+    writeResult: updateResult.data,
+    validation: afterValidation,
+    liveState
+  };
+}
+
+export async function publishAndVerifyElementorPageWorkflow(client, config, args, liveReader = createLiveRenderReader(config)) {
+  const mode = args.mode || 'plan';
+  const steps = [
+    'Apply a safe widget or document patch to stored Elementor state.',
+    'Purge Elementor cache when requested.',
+    'Fetch the live frontend and report expected and forbidden marker results separately from stored update status.'
+  ];
+
+  if (mode === 'plan') {
+    return buildWorkflowPlan('workflow_publish_and_verify_elementor_page', steps, [
+      `Target document: ${args.postType} ${args.postId}.`,
+      `Update type: ${args.update?.type || 'unknown'}.`
+    ]);
+  }
+
+  requireWorkflowConfirmation('workflow_publish_and_verify_elementor_page', args);
+  const update =
+    args.update?.type === 'widget'
+      ? await updateElementorWidgetWorkflow(
+          client,
+          {
+            mode: 'execute',
+            confirm: true,
+            postId: args.postId,
+            postType: args.postType,
+            widgetId: args.update.widgetId,
+            expectedWidgetType: args.update.expectedWidgetType,
+            settingsPatch: args.update.settingsPatch
+          },
+          config,
+          liveReader
+        )
+      : await patchElementorDocumentWorkflow(
+          client,
+          {
+            mode: 'execute',
+            confirm: true,
+            postId: args.postId,
+            postType: args.postType,
+            operations: args.update?.operations || []
+          },
+          config,
+          liveReader
+        );
+
+  let cachePurged = false;
+  if (args.purgeCache) {
+    await purgeElementorCache(client);
+    cachePurged = true;
+  }
+
+  const liveState = await getLiveRenderStateWorkflow(
+    client,
+    config,
+    {
+      postId: args.postId,
+      postType: args.postType,
+      liveUrl: args.liveUrl,
+      expectedText: args.expectedText || [],
+      forbiddenText: args.forbiddenText || []
+    },
+    liveReader
+  );
+  const liveUpdated = isVerificationSuccessful(liveState.liveFrontend, args.expectedText || [], args.forbiddenText || []);
+
+  return {
+    ok: update.storedUpdated && liveUpdated,
+    mode,
+    workflow: 'workflow_publish_and_verify_elementor_page',
+    storedUpdated: Boolean(update.storedUpdated),
+    cachePurged,
+    liveUpdated,
+    verification: {
+      expectedTextFound: liveState.liveFrontend.expectedTextFound,
+      forbiddenTextFound: liveState.liveFrontend.forbiddenTextFound
+    },
+    update,
+    liveState
   };
 }
 

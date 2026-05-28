@@ -31,11 +31,21 @@
 ## Iteration 6
 - [x] Add a dedicated site-identity workflow that returns site name, URL, current user, namespaces, and capability hints in one call.
 - [x] Expose the site-identity workflow in `agent_bootstrap` as the preferred first-call orientation path.
-- [ ] Add more site-specific overrides only if additional plugin routes prove they need specialized handling beyond the normalized client/error layer.
+- [x] Add dedicated site-capability probes so agents can distinguish route presence from confirmed read/write/cache access.
+- [x] Add explicit stored-vs-live render-state inspection with cache-aware staleness assessment.
+- [x] Add safe Elementor widget/document patch workflows instead of relying on full `_elementor_data` replacement in common cases.
+- [x] Add publish/cache-purge/live-verification orchestration for Elementor page updates.
+- [x] Return structured Elementor validation findings while preserving legacy `issues` and `warnings` fields.
 - [ ] Decide whether classic navigation/menu workflows need export/import helpers beyond the current clone and reorder coverage.
 
+## Iteration 7
+- [x] Live-validate the safe Elementor mutation and verification workflows against the AST site using the AST MCP credentials.
+- [x] Add browser-based verification coverage for the disposable AST validation pass.
+- [ ] Decide whether deeper frontend asset inspection needs a dedicated workflow beyond marker/hash verification.
+- [ ] Decide whether reusable Elementor section/template upsert belongs in the next milestone or stays as a follow-on issue.
+
 ## Progress Notes
-- Route capture and generated parity now reflect 501 operations from the refreshed HTTPS snapshot.
+- Route capture and generated parity now reflect 500 operations from the refreshed HTTPS snapshot.
 - The `test` account authenticates as an administrator over HTTPS with an application password.
 - The MCP client now auto-retries authenticated safe reads over `https` when an `http` site URL returns `rest_not_logged_in`, so that scheme mismatch is handled inside the server instead of by the caller.
 - Node-based live validation on the test site currently requires `WORDPRESS_MCP_ALLOW_INSECURE_TLS=true` because the TLS chain is not trusted.
@@ -47,3 +57,7 @@
 - Agents now have a single first-call orientation workflow, `workflow_get_site_identity`, instead of piecing site identity together from `health`, settings, and user endpoints manually.
 - The current test site exposes no classic menu locations, so location assignment remains validated only in `plan` mode there.
 - The public home page currently has a missing `favicon.ico` request returning `404`.
+- The workflow surface now includes `workflow_get_site_capabilities`, `workflow_get_live_render_state`, `workflow_update_elementor_widget`, `workflow_patch_elementor_document`, and `workflow_publish_and_verify_elementor_page`.
+- Elementor validation now emits structured `findings` entries while preserving the legacy `issues` and `warnings` arrays for existing callers.
+- Safe patching now distinguishes true widget-setting replacement from merge behavior, and live staleness assessment compares marker parity across stored, REST-rendered, and live frontend layers instead of raw-vs-rendered HTML hashes.
+- Live verification passed against AST using the configured MCP credentials: capability probes, cache purge, safe widget patching, public HTML verification, and a browser pass all succeeded against disposable artifacts that were cleaned up afterward.

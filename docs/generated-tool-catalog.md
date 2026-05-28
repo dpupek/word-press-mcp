@@ -23,10 +23,14 @@
 - `workflow_reorder_menu_items`
 - `workflow_clone_menu`
 - `workflow_get_site_identity`
+- `workflow_get_site_capabilities`
 - `workflow_get_post_urls`
 - `workflow_inspect_post`
 - `workflow_inspect_elementor_document`
 - `workflow_validate_elementor_document`
+- `workflow_get_live_render_state`
+- `workflow_update_elementor_widget`
+- `workflow_patch_elementor_document`
 - `workflow_inspect_elementor_history`
 - `workflow_list_elementor_templates`
 - `workflow_get_elementor_template_conditions`
@@ -35,6 +39,7 @@
 - `workflow_import_elementor_document_media`
 - `workflow_diff_elementor_documents`
 - `workflow_restore_elementor_candidate`
+- `workflow_publish_and_verify_elementor_page`
 - `workflow_nexport_blog_post`
 
 ## Guidance Tools
