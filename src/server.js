@@ -62,7 +62,7 @@ export async function startServer() {
 
   const mcpServer = new McpServer({
     name: 'wordpress-mcp',
-    version: '0.1.3'
+    version: '0.1.4'
   });
 
   function registerTool(name, description, schemaShape, handler) {
@@ -157,7 +157,7 @@ export async function startServer() {
     jsonResult({ ok: true, markdown: loadTroubleshooting() })
   );
   registerTool('version', 'Return the WordPress MCP server version.', noopSchema, async () =>
-    jsonResult({ ok: true, name: 'wordpress-mcp', version: '0.1.3', routeCount: operations.length })
+    jsonResult({ ok: true, name: 'wordpress-mcp', version: '0.1.4', routeCount: operations.length })
   );
   registerTool('health', 'Check WordPress MCP configuration and API connectivity.', noopSchema, async () =>
     jsonResult({ ok: true, ...(await client.healthCheck()) })
