@@ -33,8 +33,8 @@ This server is meant to sit in the middle:
 
 ## What You Get
 
-- 501 generated endpoint tools from the current captured live route surface
-- static help and generated tool catalog resources
+- 500 generated endpoint tools from the current captured live route surface
+- MCP-exposed guidance surfaces for `agent_bootstrap`, `help`, `workflow_recipes`, `troubleshooting`, and `tool_catalog`
 - workflow tools for:
   - post drafting and updating
   - featured image/media assignment
@@ -53,6 +53,22 @@ This server is meant to sit in the middle:
   - guarded Elementor document media import
   - NexPort-specific publishing conventions
 - live smoke validation script for disposable end-to-end testing
+
+---
+
+## Agent Guidance Convention
+
+If an agent may need guidance at runtime without the repo mounted, expose that guidance through MCP tools/resources first.
+
+Preferred order:
+
+- `agent_bootstrap` for first-run orientation
+- `help` for operating rules and output interpretation
+- `workflow_recipes` for task sequences and example payload shapes
+- `troubleshooting` for failure diagnosis
+- `tool_catalog` for exhaustive inventory
+
+Repo markdown is still useful for humans, but it is secondary to MCP-exposed guidance for agent usability.
 
 ---
 

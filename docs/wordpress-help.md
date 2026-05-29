@@ -1,5 +1,13 @@
 # WordPress MCP Helper
 
+## Guidance Surfaces
+- Treat MCP-exposed guidance as the primary contract when the repo is not mounted.
+- Use `agent_bootstrap` for first-run orientation.
+- Use `help` for operating rules and output interpretation.
+- Use `workflow_recipes` for copyable task sequences and example payload shapes.
+- Use `troubleshooting` for failure diagnosis.
+- Use `tool_catalog` only after you know what class of tool you need.
+
 ## Setup
 - Configure `WP_SITE_URL` to the target site root, for example `https://example.com`.
 - Set `WP_USERNAME` and `WP_APP_PASSWORD` when you need authenticated reads or any writes.
@@ -11,6 +19,8 @@
 - Prefer workflow tools when the task spans multiple API calls or involves taxonomy/media coordination.
 - Use `workflow_get_site_identity` as the preferred first-call orientation path when you need site title, URL, current user, namespaces, and capability hints in one result.
 - Use `workflow_get_site_capabilities` immediately after site identity when Elementor cache, live verification, or plugin-route permissions matter.
+- Use `workflow_recipes` when you know the task category but want the exact sequence of calls to make.
+- Use `troubleshooting` when the output looks inconsistent or a route appears present but still fails.
 - Use generated endpoint tools when you need low-level control over a specific route.
 - Use `workflow_get_post_urls` when you need a public URL for published content or the best available preview URL candidate for drafts. Drafts may return `publicUrl: null` on some sites; this is expected.
 - Use `workflow_list_menu_structure`, `workflow_upsert_menu_item`, `workflow_reorder_menu_items`, `workflow_clone_menu`, and `workflow_assign_menu_locations` for classic WordPress menu operations instead of assembling menu/menu-item requests by hand.
@@ -18,10 +28,27 @@
 - Keep writes explicit. Validate categories, tags, and media assets before touching posts.
 - Treat unexpected HTML responses as a normalized server-side failure mode and follow the actionable guidance returned by the MCP tool response.
 
+## How To Choose Elementor Write Workflows
+- Use `workflow_update_elementor_widget` when one stable widget id is known and only its `settings` need to change.
+- Use `workflow_patch_elementor_document` when you need ordered tree operations such as insert, replace, move, remove, or container-children replacement.
+- Use `workflow_publish_and_verify_elementor_page` when the write should be followed immediately by cache purge and public HTML verification.
+- Prefer the patch workflows over raw `_elementor_data` replacement for routine edits.
+- `replaceWidgetSettings` is destructive replacement semantics. Omitted keys are removed.
+- `mergeWidgetSettings` preserves omitted keys and only overlays the supplied patch.
+- Inserted Elementor elements must carry caller-supplied stable ids.
+
 ## Error Handling
 - Follow the normalized actionable response returned by the MCP server.
 - Validation errors indicate the request was blocked before any write occurred.
 - Authentication and permission issues are surfaced as actionable tool errors without requiring the agent to reason about transport details.
+
+## Interpreting Capability And Verification Results
+- `canWritePages=false` means the route may exist but the current account or site policy did not pass a safe write probe. Do not assume page updates will succeed until permissions change.
+- A blocked route entry means the server proved route exposure is not the same as usable capability. Read the `status`, `code`, and `message` before choosing a fallback.
+- `restVsStoredMismatch=true` means the REST-rendered layer does not currently match the expected/forbidden text markers seen in stored content.
+- `liveVsStoredMismatch=true` means the public frontend does not currently match the expected/forbidden text markers seen in stored content.
+- `likelyCacheIssue=true` means the stored markers and REST-rendered markers agree, but the live frontend markers still lag behind. Treat this as a cache or publish-propagation signal first.
+- A healthy live verification path is: stored state updated, REST markers updated, cache purge succeeded or was intentionally skipped, and live markers reached the expected state with no forbidden markers found.
 
 ## Expected Behavior
 - Drafts may return `publicUrl: null` in `workflow_get_post_urls`; this is normal on many sites. Use `previewUrl` for drafts.

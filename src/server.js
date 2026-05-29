@@ -8,7 +8,13 @@ import { loadOperations } from './generator.js';
 import { createLogger } from './logger.js';
 import { createWpClient } from './wp-client.js';
 import { jsonResult } from './utils.js';
-import { loadAgentBootstrap, loadGeneratedCatalog, loadStaticHelp } from './help.js';
+import {
+  loadAgentBootstrap,
+  loadGeneratedCatalog,
+  loadStaticHelp,
+  loadTroubleshooting,
+  loadWorkflowRecipes
+} from './help.js';
 import { augmentElementorSchema, enrichElementorResponse, maybeApplyElementorOptions } from './elementor.js';
 import {
   assignMenuLocationsWorkflow,
@@ -117,6 +123,24 @@ export async function startServer() {
     })
   );
 
+  mcpServer.resource(
+    'workflow_recipes',
+    'workflow_recipes',
+    { description: 'Copyable WordPress MCP workflow recipes', mimeType: 'text/markdown' },
+    async () => ({
+      contents: [{ uri: 'workflow_recipes', mimeType: 'text/markdown', text: loadWorkflowRecipes() }]
+    })
+  );
+
+  mcpServer.resource(
+    'troubleshooting',
+    'troubleshooting',
+    { description: 'WordPress MCP troubleshooting guidance', mimeType: 'text/markdown' },
+    async () => ({
+      contents: [{ uri: 'troubleshooting', mimeType: 'text/markdown', text: loadTroubleshooting() }]
+    })
+  );
+
   registerTool('agent_bootstrap', 'Return task-oriented bootstrap guidance for agents using this WordPress MCP server.', noopSchema, async () =>
     jsonResult({ ok: true, markdown: loadAgentBootstrap() })
   );
@@ -125,6 +149,12 @@ export async function startServer() {
   );
   registerTool('tool_catalog', 'Return the generated WordPress MCP tool catalog.', noopSchema, async () =>
     jsonResult({ ok: true, markdown: loadGeneratedCatalog() })
+  );
+  registerTool('workflow_recipes', 'Return copyable task recipes for common WordPress and Elementor workflows.', noopSchema, async () =>
+    jsonResult({ ok: true, markdown: loadWorkflowRecipes() })
+  );
+  registerTool('troubleshooting', 'Return troubleshooting guidance for common WordPress MCP failure modes.', noopSchema, async () =>
+    jsonResult({ ok: true, markdown: loadTroubleshooting() })
   );
   registerTool('version', 'Return the WordPress MCP server version.', noopSchema, async () =>
     jsonResult({ ok: true, name: 'wordpress-mcp', version: '0.1.3', routeCount: operations.length })

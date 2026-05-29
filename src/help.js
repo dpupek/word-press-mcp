@@ -21,6 +21,20 @@ export function loadAgentBootstrap() {
   );
 }
 
+export function loadWorkflowRecipes() {
+  return readTextIfExists(
+    PATHS.workflowRecipes,
+    ['# WordPress MCP Workflow Recipes', '', 'Run `agent_bootstrap` first, then use workflow-specific recipes.'].join('\n')
+  );
+}
+
+export function loadTroubleshooting() {
+  return readTextIfExists(
+    PATHS.troubleshooting,
+    ['# WordPress MCP Troubleshooting', '', 'Run `workflow_get_site_capabilities` and inspect the normalized MCP error envelope first.'].join('\n')
+  );
+}
+
 export function loadGeneratedCatalog() {
   return readTextIfExists(PATHS.generatedCatalog, '# Generated tool catalog unavailable.\n');
 }

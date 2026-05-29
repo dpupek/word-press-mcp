@@ -12,5 +12,7 @@ export const PATHS = {
   generatedOperations: path.join(ROOT_DIR, 'src', 'generated', 'operations.generated.json'),
   generatedCatalog: path.join(ROOT_DIR, 'docs', 'generated-tool-catalog.md'),
   staticHelp: path.join(ROOT_DIR, 'docs', 'wordpress-help.md'),
-  agentBootstrap: path.join(ROOT_DIR, 'docs', 'agent-bootstrap.md')
+  agentBootstrap: path.join(ROOT_DIR, 'docs', 'agent-bootstrap.md'),
+  workflowRecipes: path.join(ROOT_DIR, 'docs', 'workflow-recipes.md'),
+  troubleshooting: path.join(ROOT_DIR, 'docs', 'troubleshooting.md')
 };

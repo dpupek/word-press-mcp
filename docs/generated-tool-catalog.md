@@ -7,11 +7,30 @@
 - Core-source tools: 271
 - Site/plugin-source tools: 229
 
+## Guidance Surfaces
+- `agent_bootstrap`: first-call orientation and task routing
+- `help`: operating rules, safety guidance, and output interpretation
+- `workflow_recipes`: copyable task sequences and example payload shapes
+- `troubleshooting`: diagnosis for auth, permission, stale-live, and cleanup failures
+- `tool_catalog`: exhaustive inventory after you know which tool class you need
+
 ## Safety Contract
 - Every mutating endpoint tool accepts `confirm` and requires `confirm: true` while safe mode is enabled.
 - Workflow tools separate planning from execution using `mode: "plan" | "execute"`.
 - Validation failures are returned before any write is attempted.
+- Guidance that agents may need at runtime should be exposed through MCP tools/resources, not only repo markdown.
 - Use `agent_bootstrap` first when an agent is new to the site and needs orientation recipes instead of exhaustive reference material.
+
+## Use These First
+1. `health`
+2. `workflow_get_site_identity`
+3. `workflow_get_site_capabilities`
+4. `agent_bootstrap` or `workflow_recipes` when you need task routing
+
+## Elementor Workflow Routing
+- Reads and audits: `workflow_inspect_elementor_document`, `workflow_validate_elementor_document`, `workflow_get_live_render_state`, `workflow_inspect_elementor_history`, `workflow_diff_elementor_documents`
+- Targeted writes: `workflow_update_elementor_widget` for one widget, `workflow_patch_elementor_document` for ordered tree changes
+- Verification-oriented writes: `workflow_publish_and_verify_elementor_page` when cache purge and live marker verification should happen in one flow
 
 ## Workflow Tools
 - `workflow_draft_or_update_post`
@@ -45,6 +64,8 @@
 ## Guidance Tools
 - `agent_bootstrap`
 - `help`
+- `workflow_recipes`
+- `troubleshooting`
 - `tool_catalog`
 
 ## Endpoint Tools

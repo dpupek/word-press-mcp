@@ -9,6 +9,11 @@ description: Install and configure the WordPress MCP server for Codex agents, in
 
 Install required dependencies, add a per-site MCP entry to the Codex config, and validate that the help and orientation resources load correctly.
 
+Repo convention:
+
+- When guidance must be available to an agent at runtime, prefer MCP-exposed tools/resources over repo-only markdown.
+- Treat local docs as authoring sources and human reference, not as the only delivery path.
+
 ## Workflow
 
 ### 1. Install dependencies (Windows)
@@ -72,9 +77,11 @@ Ask the user if they want the file opened for editing. If yes:
 
 After the MCP entry is set:
 
-1. Call `help` to confirm the help resource loads.
-2. Call `agent_bootstrap` for first-time orientation steps.
-3. If needed, reference local docs:
+1. Call `agent_bootstrap` for first-time orientation steps.
+2. Call `help` to confirm the operating guidance loads.
+3. Call `workflow_recipes` to confirm task recipes load.
+4. Call `troubleshooting` to confirm failure guidance loads.
+5. If needed, reference local docs:
    - `user-docs/quick-start.md`
    - `user-docs/github-release-channels.md`
    - `docs/agent-bootstrap.md`
