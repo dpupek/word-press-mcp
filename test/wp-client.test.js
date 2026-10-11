@@ -41,6 +41,31 @@ const baseConfig = {
   allowInsecureTls: false
 };
 
+test('createWpClient: encodes array filters as PHP arrays and preserves scalar query values', async () => {
+  const calls = [];
+  const client = createWpClient(
+    { ...baseConfig, siteUrl: 'https://example.com' },
+    createLoggerSpy(),
+    { request: async (url) => { calls.push(url); return fakeResponse({ body: [] }); } }
+  );
+  const operation = {
+    toolName: 'wp_v2_posts_list', route: '/wp/v2/posts', method: 'GET', pathParams: [],
+    args: ['include', 'exclude', 'categories', 'slug', 'per_page', 'search'].map((name) => ({ name })),
+    requestStyle: 'query', mutation: false
+  };
+  await client.execute(operation, {
+    include: ['196', '182'], exclude: ['10', '20'], categories: ['3', '4'],
+    slug: ['one', 'two'], per_page: 10, search: 'Rapier & C&T'
+  });
+  const query = new URL(calls[0]).searchParams;
+  for (const [key, expected] of Object.entries({ include: ['196', '182'], exclude: ['10', '20'], categories: ['3', '4'], slug: ['one', 'two'] })) {
+    assert.deepEqual(query.getAll(`${key}[]`), expected);
+    assert.equal(query.has(key), false);
+  }
+  assert.equal(query.get('per_page'), '10');
+  assert.equal(query.get('search'), 'Rapier & C&T');
+});
+
 test('createWpClient: upgrades http auth failure to https automatically for safe reads', async () => {
   // Arrange
   const calls = [];

@@ -38,7 +38,7 @@ function withQuery(url, queryEntries) {
   for (const [key, value] of Object.entries(queryEntries || {})) {
     if (value === undefined || value === null) continue;
     if (Array.isArray(value)) {
-      for (const entry of value) target.searchParams.append(key, String(entry));
+      for (const entry of value) target.searchParams.append(`${key}[]`, String(entry));
     } else {
       target.searchParams.set(key, String(value));
     }

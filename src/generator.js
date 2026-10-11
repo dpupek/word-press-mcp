@@ -211,11 +211,37 @@ export function verifyOperationsAgainstRouteIndex(operations, routeIndex) {
 }
 
 export function routePatternToConcretePath(route, args) {
-  let concrete = route;
-  for (const paramName of extractPathParams(route)) {
-    concrete = concrete.replace(new RegExp(`\\(\\?P<${paramName}>[^)]+\\)`), encodeURIComponent(String(args[paramName])));
+  // Parse complete groups here without changing existing generated tool names.
+  const groupStart = /\(\?P<([^>]+)>/g;
+  let concrete = '';
+  let cursor = 0;
+  let match;
+  while ((match = groupStart.exec(route))) {
+    let depth = 1;
+    let inClass = false;
+    let end = groupStart.lastIndex;
+    for (; end < route.length; end += 1) {
+      const character = route[end];
+      if (character === '\\') {
+        end += 1;
+        continue;
+      }
+      if (inClass) {
+        if (character === ']') inClass = false;
+        continue;
+      }
+      if (character === '[') inClass = true;
+      else if (character === '(') depth += 1;
+      else if (character === ')' && --depth === 0) break;
+    }
+    if (depth !== 0) {
+      throw { kind: 'validation_error', message: `Unclosed path parameter group in route: ${route}` };
+    }
+    concrete += route.slice(cursor, match.index) + encodeURIComponent(String(args[match[1]]));
+    cursor = end + 1;
+    groupStart.lastIndex = cursor;
   }
-  return concrete;
+  return concrete + route.slice(cursor);
 }
 
 export function fileExistsArg(operation) {

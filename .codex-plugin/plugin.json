@@ -1,0 +1,7 @@
+{
+  "name": "wordpress-mcp",
+  "version": "0.1.5",
+  "description": "WordPress REST tools with bundled WordPress development skills and remote-site operating guidance.",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

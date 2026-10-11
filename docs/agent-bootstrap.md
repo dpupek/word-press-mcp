@@ -4,6 +4,15 @@ Use this when first connecting to a WordPress site through this MCP server.
 
 This resource is the canonical first-run guide when the agent does not have the repo mounted.
 
+## Bundled WordPress Skills
+
+Use `list_skills` to discover guidance, then `read_skill` with
+`name: "wordpress-mcp-operations"` for remote-site operating rules. Load only
+relevant upstream skills and supporting files with `read_skill_file`.
+All files are also available as `skill://wordpress-mcp/<name>/<path>` resources.
+Skills provide guidance; they do not run scripts or grant write permissions.
+Local development skills require their stated source code and tooling.
+
 ## Startup Checklist
 
 1. Run `health`.

@@ -13,6 +13,7 @@
 - `workflow_recipes`: copyable task sequences and example payload shapes
 - `troubleshooting`: diagnosis for auth, permission, stale-live, and cleanup failures
 - `tool_catalog`: exhaustive inventory after you know which tool class you need
+- `list_skills`, `read_skill`, `read_skill_file`: bundled WordPress guidance and supporting files
 
 ## Safety Contract
 - Every mutating endpoint tool accepts `confirm` and requires `confirm: true` while safe mode is enabled.
@@ -62,6 +63,9 @@
 - `workflow_nexport_blog_post`
 
 ## Guidance Tools
+- `list_skills`
+- `read_skill`
+- `read_skill_file`
 - `agent_bootstrap`
 - `help`
 - `workflow_recipes`

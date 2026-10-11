@@ -171,6 +171,7 @@ See [GitHub Release Channels](user-docs/github-release-channels.md) for the exac
 | `WORDPRESS_MCP_ALLOW_INSECURE_TLS` | optional | Explicit opt-in for self-signed/untrusted test certificates |
 | `WORDPRESS_MCP_DEBUG` | optional | Enables additional stderr logging for startup and tool execution |
 | `WORDPRESS_MCP_LOG_FILE` | optional | Appends structured logs to a file in addition to stderr |
+| `WORDPRESS_MCP_SKILL_CATALOG` | optional | `all` (default) or the five-skill `import` profile; fallback tools always expose the full bundle |
 | `WORDPRESS_MCP_ROUTE_CAPTURE_URL` | optional | Route-capture URL used by generator scripts |
 
 ### Alternative: Install And Run Locally
@@ -235,6 +236,13 @@ Start here:
 - [Agent Test Checklist](user-docs/agent-mcp-test.md)
 
 ## Skills Library
+
+The npm package also bundles the official WordPress agent skills and a
+server-specific operating skill. Use `list_skills`, `read_skill`, and
+`read_skill_file`, or the Skills-over-MCP extension. Native Codex/Claude plugin
+manifests point to the same packaged directory. See
+[Bundled Skills](user-docs/bundled-skills.md) for installation, requirements,
+the five-skill import profile, provenance, and license boundaries.
 
 This repo includes a curated skill library under [`skills-library/`](skills-library). The WordPress MCP setup skill lives here:
 

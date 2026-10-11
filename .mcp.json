@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "wordpress": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/index.js"],
+      "env": {
+        "WORDPRESS_MCP_SAFE_MODE": "true",
+        "WORDPRESS_MCP_DEBUG": "false",
+        "WORDPRESS_MCP_ALLOW_INSECURE_TLS": "false"
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "wordpress-mcp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "bin": {
     "wordpress-mcp": "./index.js"
@@ -11,6 +11,11 @@
     "spec/",
     "docs/",
     "user-docs/",
+    "skills/",
+    ".codex-plugin/",
+    ".claude-plugin/",
+    ".mcp.json",
+    "THIRD_PARTY_NOTICES.md",
     "README.md",
     "LICENSE"
   ],
@@ -32,8 +37,9 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.21.0",
-    "undici": "^7.16.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "undici": "^7.30.0",
+    "yaml": "^2.9.1",
     "zod": "^3.25.76"
   }
 }

@@ -12,6 +12,7 @@ export function getConfig() {
     username: process.env.WP_USERNAME?.trim() || '',
     appPassword: process.env.WP_APP_PASSWORD?.trim() || '',
     debug: parseBoolean(process.env.WORDPRESS_MCP_DEBUG, false),
+    skillCatalog: process.env.WORDPRESS_MCP_SKILL_CATALOG?.trim() || 'all',
     safeMode: parseBoolean(process.env.WORDPRESS_MCP_SAFE_MODE, true),
     allowInsecureTls: parseBoolean(process.env.WORDPRESS_MCP_ALLOW_INSECURE_TLS, false),
     logFile: process.env.WORDPRESS_MCP_LOG_FILE?.trim() || '',

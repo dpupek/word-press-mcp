@@ -1,6 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pkg from '../package.json' with { type: 'json' };
+import fs from 'node:fs';
+import path from 'node:path';
+import { PATHS } from '../src/paths.js';
+
+test('package metadata: ships skills and both native manifests using the same directory', () => {
+  for (const entry of ['skills/', '.codex-plugin/', '.claude-plugin/', '.mcp.json', 'THIRD_PARTY_NOTICES.md']) {
+    assert.ok(pkg.files.includes(entry), entry);
+  }
+  for (const manifest of ['.codex-plugin/plugin.json', '.claude-plugin/plugin.json']) {
+    const data = JSON.parse(fs.readFileSync(path.join(PATHS.root, manifest)));
+    assert.equal(data.skills, './skills/');
+    assert.equal(data.mcpServers, './.mcp.json');
+    assert.equal(data.version, pkg.version);
+  }
+  const mcp = JSON.parse(fs.readFileSync(path.join(PATHS.root, '.mcp.json')));
+  assert.equal(mcp.mcpServers.wordpress.command, 'node');
+  assert.equal(mcp.mcpServers.wordpress.env.WORDPRESS_MCP_SAFE_MODE, 'true');
+  assert.equal(mcp.mcpServers.wordpress.env.WORDPRESS_MCP_DEBUG, 'false');
+});
 
 test('package metadata: git-based npx contract is explicit', () => {
   // Arrange

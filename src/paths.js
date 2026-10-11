@@ -7,6 +7,7 @@ export const PATHS = {
   root: ROOT_DIR,
   docs: path.join(ROOT_DIR, 'docs'),
   spec: path.join(ROOT_DIR, 'spec'),
+  skills: path.join(ROOT_DIR, 'skills'),
   liveSpec: path.join(ROOT_DIR, 'spec', 'live', 'test-nexportsolutions-route-index.json'),
   generatedDir: path.join(ROOT_DIR, 'src', 'generated'),
   generatedOperations: path.join(ROOT_DIR, 'src', 'generated', 'operations.generated.json'),

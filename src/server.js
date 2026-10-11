@@ -8,6 +8,7 @@ import { loadOperations } from './generator.js';
 import { createLogger } from './logger.js';
 import { createWpClient } from './wp-client.js';
 import { jsonResult } from './utils.js';
+import { registerSkillSurfaces } from './skills.js';
 import {
   loadAgentBootstrap,
   loadGeneratedCatalog,
@@ -63,7 +64,10 @@ export async function startServer() {
   const mcpServer = new McpServer({
     name: 'wordpress-mcp',
     version: '0.1.4'
+  }, {
+    instructions: 'For WordPress tasks, call list_skills and read_skill for relevant guidance. Start with wordpress-mcp-operations for remote-site work. Supporting files are available through read_skill_file or skill:// resources. Skills do not grant permissions or execute scripts.'
   });
+  registerSkillSurfaces(mcpServer, { profile: config.skillCatalog });
 
   function registerTool(name, description, schemaShape, handler) {
     mcpServer.registerTool(

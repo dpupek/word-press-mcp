@@ -46,7 +46,7 @@ function runCommand(command, args, options = {}) {
     };
 
     const child =
-      process.platform === 'win32'
+      process.platform === 'win32' && /\.(cmd|bat)$/i.test(command)
         ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', [command, ...args].map(quoteWindowsArg).join(' ')], spawnOptions)
         : spawn(command, args, spawnOptions);
 
@@ -173,6 +173,19 @@ async function main() {
     if (!fs.existsSync(coreNamespacesPath)) {
       throw new Error(`Runtime spec file missing after packed install: ${coreNamespacesPath}`);
     }
+
+    for (const relative of [
+      'skills/upstream.json', 'skills/COPYING.wordpress', 'skills/wp-rest-api/references/authentication.md',
+      'skills/wordpress-mcp-operations/SKILL.md', '.codex-plugin/plugin.json',
+      '.claude-plugin/plugin.json', '.mcp.json', 'THIRD_PARTY_NOTICES.md'
+    ]) {
+      if (!fs.existsSync(path.join(installedPackageDir, relative))) {
+        throw new Error(`Bundled skill/plugin file missing after packed install: ${relative}`);
+      }
+    }
+    await runCommand(process.execPath, ['--input-type=module', '-e',
+      "import { createSkillCatalog } from './src/skills.js'; const c = createSkillCatalog(); if (c.entries.length !== 20 || createSkillCatalog({profile:'import'}).list().skills.length !== 5) process.exit(1);"
+    ], { cwd: installedPackageDir, env: process.env });
 
     const smokeResult = await smokeRunServer(installedPackageDir);
 
