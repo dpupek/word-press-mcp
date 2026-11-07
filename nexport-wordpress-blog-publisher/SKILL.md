@@ -14,7 +14,7 @@ This site's blog posts can be managed as standard WordPress posts through the RE
 - normal `excerpt`
 - standard WordPress categories, tags, and featured media
 
-Do not assume you can edit Elementor document/widget JSON directly unless you are following a structure already validated against the live site. Prefer the WordPress posts API unless the user explicitly asks for browser-driven Elementor layout editing.
+Do not assume you can edit Elementor document/widget JSON directly unless you are following a structure already validated against the live site. For ordinary Theme-layout posts, the WordPress posts API remains appropriate. For Elementor layout edits, inspect the native Elementor MCP when available and use supported operations for the actual document and widget versions; use the guarded WordPress MCP workflow or editor if the native MCP cannot edit the target.
 
 Companion artifacts:
 
@@ -25,7 +25,7 @@ Companion artifacts:
 
 Preferred tooling order for this repo:
 
-1. Use the WordPress MCP workflows first for inspection, validation, taxonomy, media, and Elementor-safe operations.
+1. Discover the native Elementor MCP and the WordPress MCP when available. Verify site identity, authentication and target edit permission independently for each connection. Use native Elementor operations where they support the target; use WordPress MCP workflows for inspection, taxonomy, media and guarded legacy edits.
 2. Fall back to the helper script only when the MCP workflow surface is missing a required capability.
 3. For Elementor-heavy work, inspect, validate, and diff before any write.
 4. For environment validation or regression checks, prefer `npm run smoke:live` over ad hoc destructive testing.
@@ -77,7 +77,7 @@ These findings were verified against the live site and should guide the workflow
 - Existing Elementor-backed blog posts are exposed as ordinary `wp/v2/posts`.
 - Posts using the site’s `Theme` layout currently present through the API as `template = "elementor_theme"`.
 - `content.raw` is the editable source for those posts.
-- The Elementor REST namespace exposed on the site does not currently provide a confirmed general-purpose document save API for post layouts.
+- Elementor capabilities and supported document versions vary by connection and release. Inspect current MCP tool schemas rather than inferring write support from advertised namespaces.
 - The site also exposes `wp-abilities/v1`, but no publishing ability for blog authoring has been confirmed.
 - A valid Elementor-authored blog document for this site must include populated Elementor meta, not just the WordPress post template.
 - The safest authoring workflow is to revise a known-good live draft or clone a known-good live post structure rather than inventing a new Elementor document from scratch.
@@ -228,6 +228,8 @@ Prefer these MCP workflows over hand-rolled API call sequences when they fit the
 - `workflow_list_elementor_templates`
 - `workflow_get_elementor_template_conditions`
 
+For native Elementor MCP operations, inspect current tool schemas and the actual page tree. Some versions can inspect V3 elements but modify only V4 elements. Preserve legacy structures; use a verified, authorized WordPress MCP patch workflow or the editor for unsupported targets. Changes may stage an autosave: use the supported preview and publish flow only when authorized, then verify stored and live results. Shared site parts affect other pages.
+
 Safe Elementor operating order:
 
 1. inspect
@@ -290,7 +292,7 @@ Repair rule:
 - In the current test environment, the `test` account authenticates successfully as a site administrator when the site is accessed over `https`.
 - Over plain `http`, the same application-password flow returns `rest_not_logged_in`, so live validation and automation should use `https`.
 - The test site currently presents an untrusted TLS chain to Node-based clients, so MCP-based live validation may also require `WORDPRESS_MCP_ALLOW_INSECURE_TLS=true` until the certificate chain is corrected.
-- Even with valid administrator auth, `elementor/v1/post` still returns `403` on this site, so prefer the guarded WordPress-core and site-editor routes unless a specific Elementor endpoint has been validated.
+- A prior test returned `403` for `elementor/v1/post`; recheck current permissions and use supported native Elementor MCP or guarded WordPress workflows as appropriate.
 - Deleting an `elementor_library` kit can trigger an Elementor HTML confirmation screen instead of a normal REST JSON delete response, so treat kit deletion as a special-case admin flow.
 - `npm run smoke:live` is the preferred reusable regression pass for this repo. It creates disposable content, exercises clone/restore/media-import, deletes disposable posts, and reports kit-delete confirmation blocks as structured errors.
 
